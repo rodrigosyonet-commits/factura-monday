@@ -1,7 +1,5 @@
-import { construirCFDI } from "../lib/cfdi.js";
-import { timbrarCFDI } from "../lib/sw.js";
-import { subirArchivoMonday } from "../lib/monday.js";
 import fs from "fs";
+import FormData from "form-data";
 
 // ================================
 // 🔧 UTILIDADES
@@ -18,142 +16,227 @@ function saveFile(buffer, filename) {
 }
 
 // ================================
+// ✅ VALIDACIONES
+// ================================
+
+function limpiarDatos(data) {
+  return {
+    rfc: data.rfc?.trim().toUpperCase(),
+    cliente: data.cliente?.trim(),
+    uso_cfdi: data.uso_cfdi?.trim().toUpperCase(),
+    monto: Number(data.monto)
+  };
+}
+
+function validarCampos(data) {
+  const errores = [];
+
+  if (!data.rfc) errores.push("RFC requerido");
+  if (!data.cliente) errores.push("Nombre requerido");
+  if (!data.uso_cfdi) errores.push("Uso CFDI requerido");
+  if (!data.monto) errores.push("Monto requerido");
+
+  if (errores.length) {
+    throw new Error("Campos faltantes: " + errores.join(", "));
+  }
+}
+
+function validarFormato(data) {
+  const errores = [];
+
+  if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(data.rfc)) {
+    errores.push("RFC inválido");
+  }
+
+  if (isNaN(data.monto) || data.monto <= 0) {
+    errores.push("Monto inválido");
+  }
+
+  if (errores.length) {
+    throw new Error("Formato inválido: " + errores.join(", "));
+  }
+}
+
+// ================================
+// 🔐 SW AUTH
+// ================================
+
+async function getToken() {
+  const res = await fetch("https://api.sw.com.mx/security/authenticate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user: process.env.SW_USER,
+      password: process.env.SW_PASSWORD
+    })
+  });
+
+  const data = await res.json();
+  return data.token;
+}
+
+// ================================
+// 🧾 TIMBRADO
+// ================================
+
+async function timbrarCFDI(payload) {
+  const token = await getToken();
+
+  const res = await fetch("https://api.sw.com.mx/cfdi40/stamp/json", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
+  return data;
+}
+
+// ================================
+// 📤 SUBIR ARCHIVO A MONDAY
+// ================================
+
+async function subirArchivoMonday(itemId, filePath, columnId) {
+  const formData = new FormData();
+
+  formData.append("query", `
+    mutation ($file: File!) {
+      add_file_to_column(item_id: ${itemId}, column_id: "${columnId}", file: $file) {
+        id
+      }
+    }
+  `);
+
+  formData.append("variables", JSON.stringify({}));
+  formData.append("map", JSON.stringify({ file: ["variables.file"] }));
+  formData.append("file", fs.createReadStream(filePath));
+
+  const res = await fetch("https://api.monday.com/v2/file", {
+    method: "POST",
+    headers: {
+      Authorization: process.env.MONDAY_API_KEY
+    },
+    body: formData
+  });
+
+  return res.json();
+}
+
+// ================================
+// 🧱 ARMAR CFDI
+// ================================
+
+function construirCFDI(data) {
+  return {
+    credentials: {
+      certificate: process.env.SW_CER,
+      key: process.env.SW_KEY,
+      password: process.env.SW_CERT_PASSWORD
+    },
+    cfdi: {
+      Comprobante: {
+        TipoDeComprobante: "I",
+        MetodoPago: "PUE",
+        Moneda: "MXN"
+      },
+      Emisor: {
+        Rfc: process.env.RFC_EMISOR,
+        Nombre: process.env.NOMBRE_EMISOR,
+        RegimenFiscal: "601"
+      },
+      Receptor: {
+        Rfc: data.rfc,
+        Nombre: data.cliente,
+        UsoCFDI: data.uso_cfdi
+      },
+      Conceptos: [
+        {
+          ClaveProdServ: "01010101",
+          Cantidad: 1,
+          ClaveUnidad: "ACT",
+          Descripcion: "Servicio",
+          ValorUnitario: data.monto,
+          Importe: data.monto
+        }
+      ]
+    }
+  };
+}
+
+// ================================
 // 🚀 WEBHOOK PRINCIPAL
 // ================================
 
 export default async function handler(req, res) {
 
-  // ✅ Verificación de Monday
+  // ✅ 🔥 MONDAY VERIFICATION
   if (req.method === "GET") {
     return res.status(200).send(req.query.challenge);
   }
 
   try {
-    console.log("📩 BODY COMPLETO:", JSON.stringify(req.body, null, 2));
-
-    /**
-     * 🔴 IMPORTANTE:
-     * Hay dos escenarios:
-     * 1. Monday webhook automático → viene en req.body.event
-     * 2. Payload custom → viene directo en req.body
-     */
+    console.log("📩 BODY:", JSON.stringify(req.body, null, 2));
 
     const event = req.body.event || req.body;
 
-    // ================================
-    // 🧠 OBTENER ITEM ID
-    // ================================
-
-    const itemId =
-      event.pulseId ||  // webhook normal de Monday
-      event.itemId;     // payload custom
+    const itemId = event.pulseId || event.itemId;
 
     if (!itemId) {
       throw new Error("No se encontró itemId");
     }
 
-    // ================================
-    // 🧾 DATOS DESDE MONDAY
-    // ================================
-
-    /**
-     * 🔴 AJUSTA ESTO SEGÚN TU CONFIGURACIÓN EN MONDAY
-     * Si envías payload custom:
-     * {
-     *   rfc, cliente, monto, uso_cfdi
-     * }
-     */
-
     const values = event.columnValues || event;
 
-    const data = {
+    let data = {
       rfc: values.rfc,
       cliente: values.cliente,
       uso_cfdi: values.uso_cfdi,
-      monto: Number(values.monto)
+      monto: values.monto
     };
 
-    console.log("📊 DATOS PROCESADOS:", data);
+    // ✅ limpieza y validación
+    data = limpiarDatos(data);
+    validarCampos(data);
+    validarFormato(data);
 
-    // ================================
-    // 🧱 CONSTRUIR CFDI
-    // ================================
+    console.log("✅ DATA VALIDADA:", data);
 
-    const cfdiPayload = construirCFDI(data);
+    // ✅ CFDI
+    const cfdi = construirCFDI(data);
 
-    console.log("📦 CFDI:", JSON.stringify(cfdiPayload, null, 2));
+    // ✅ Timbrado
+    const result = await timbrarCFDI(cfdi);
 
-    // ================================
-    // 🧾 TIMBRAR EN SW
-    // ================================
+    console.log("✅ TIMBRADO:", result);
 
-    const result = await timbrarCFDI(cfdiPayload);
-
-    console.log("✅ RESPUESTA SW:", result);
-
-    // ================================
-    // 📄 PROCESAR XML
-    // ================================
-
+    // ✅ XML
     const xmlBase64 = result?.data?.xml;
 
     if (!xmlBase64) {
-      throw new Error("No se recibió XML desde SW");
+      throw new Error("SW no devolvió XML");
     }
 
     const xmlBuffer = decodeBase64(xmlBase64);
     const xmlPath = saveFile(xmlBuffer, "factura.xml");
 
-    // ================================
-    // 📤 SUBIR XML A MONDAY
-    // ================================
-
-    /**
-     * 🔴 IMPORTANTE:
-     * Cambia "archivo_xml" por el ID REAL de tu columna tipo Files
-     */
-
-    await subirArchivoMonday(
-      itemId,
-      xmlPath,
-      "archivo_xml"
-    );
-
-    // ================================
-    // 📄 (OPCIONAL) PDF
-    // ================================
-
-    /**
-     * 🔴 Si tu endpoint de SW devuelve PDF:
-     */
-
-    /*
-    const pdfBase64 = result?.data?.pdf;
-
-    if (pdfBase64) {
-      const pdfBuffer = decodeBase64(pdfBase64);
-      const pdfPath = saveFile(pdfBuffer, "factura.pdf");
-
-      await subirArchivoMonday(
-        itemId,
-        pdfPath,
-        "archivo_pdf"
-      );
-    }
-    */
-
-    // ================================
-    // ✅ RESPUESTA FINAL
-    // ================================
+    // ✅ subir a Monday
+    await subirArchivoMonday(itemId, xmlPath, "archivo_xml");
 
     return res.status(200).json({
       success: true,
-      message: "CFDI timbrado y XML guardado en Monday"
+      message: "Factura generada correctamente"
     });
 
   } catch (error) {
-
-    console.error("❌ ERROR GENERAL:", error);
+    console.error("❌ ERROR:", error);
 
     return res.status(500).json({
       success: false,
