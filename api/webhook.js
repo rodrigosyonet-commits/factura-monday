@@ -3,22 +3,30 @@ import { timbrarCFDI } from "../lib/sw.js";
 import { subirArchivoMonday } from "../lib/monday.js";
 import { decodeBase64, saveFile } from "../lib/files.js";
 
-// ================================
-// 🚀 WEBHOOK PRINCIPAL
-// ================================
-
 export default async function handler(req, res) {
 
   // =====================================
-  // ✅ 1. VERIFICACIÓN DE MONDAY (challenge)
+  // ✅ 1. EVITAR CACHE (CRÍTICO PARA MONDAY)
   // =====================================
-  if (req.method === "GET") {
-    console.log("✅ Verificación Monday");
-    return res.status(200).send(req.query.challenge);
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+
+  // =====================================
+  // ✅ 2. VERIFICACIÓN CHALLENGE (FIX DEFINITIVO)
+  // =====================================
+  if (req.query && req.query.challenge) {
+    console.log("✅ Challenge recibido:", req.query.challenge);
+
+    return res
+      .status(200)
+      .setHeader("Content-Type", "text/plain")
+      .send(String(req.query.challenge)); // 👈 EXACTO como lo quiere Monday
   }
 
   // =====================================
-  // ✅ 2. EVENTO REAL (POST)
+  // ✅ 3. EVENTO REAL (POST)
   // =====================================
   try {
     console.log("📩 BODY COMPLETO:", JSON.stringify(req.body, null, 2));
@@ -26,21 +34,20 @@ export default async function handler(req, res) {
     const event = req.body.event || req.body;
 
     // =====================================
-    // ✅ OBTENER ITEM ID (robusto)
+    // ✅ OBTENER ITEM ID (ROBUSTO)
     // =====================================
     const itemId =
       req.body?.event?.pulseId ||
       req.body?.pulseId ||
       req.body?.itemId;
 
-    // 🔴 MUY IMPORTANTE: NO TRUENA SI NO HAY itemId
+    // ✅ NO ROMPER SI NO VIENE (esto es normal en tests)
     if (!itemId) {
-      console.log("⚠️ Evento sin itemId (probablemente test o conexión)");
+      console.log("⚠️ Evento sin itemId (ignorado)");
 
       return res.status(200).json({
         success: true,
-        message: "Evento recibido sin itemId (ignorado)",
-        body: req.body
+        message: "Evento recibido sin itemId (ignore)"
       });
     }
 
@@ -49,7 +56,6 @@ export default async function handler(req, res) {
     // =====================================
     // ✅ DATOS DESDE MONDAY
     // =====================================
-
     const values = event.columnValues || event;
 
     console.log("📊 VALUES RAW:", values);
@@ -62,9 +68,8 @@ export default async function handler(req, res) {
     };
 
     // =====================================
-    // ✅ LIMPIAR DATA
+    // ✅ LIMPIEZA
     // =====================================
-
     data = {
       rfc: data.rfc?.trim().toUpperCase(),
       cliente: data.cliente?.trim(),
@@ -77,7 +82,6 @@ export default async function handler(req, res) {
     // =====================================
     // ✅ VALIDACIONES
     // =====================================
-
     if (!data.rfc || !data.cliente || !data.monto) {
       return res.status(200).json({
         success: false,
@@ -105,7 +109,6 @@ export default async function handler(req, res) {
     // =====================================
     // ✅ CONSTRUIR CFDI
     // =====================================
-
     const cfdi = construirCFDI(data);
 
     console.log("📦 CFDI:", JSON.stringify(cfdi, null, 2));
@@ -113,15 +116,13 @@ export default async function handler(req, res) {
     // =====================================
     // ✅ TIMBRAR EN SW
     // =====================================
-
     const result = await timbrarCFDI(cfdi);
 
     console.log("✅ RESPUESTA SW:", result);
 
     // =====================================
-    // ✅ OBTENER XML
+    // ✅ XML
     // =====================================
-
     const xmlBase64 = result?.data?.xml;
 
     if (!xmlBase64) {
@@ -133,27 +134,23 @@ export default async function handler(req, res) {
     }
 
     // =====================================
-    // ✅ GUARDAR XML
+    // ✅ GUARDAR ARCHIVO
     // =====================================
-
     const xmlBuffer = decodeBase64(xmlBase64);
     const xmlPath = saveFile(xmlBuffer, "factura.xml");
 
-    console.log("📄 XML guardado:", xmlPath);
+    console.log("📄 XML guardado en:", xmlPath);
 
     // =====================================
-    // ✅ SUBIR XML A MONDAY
+    // ✅ SUBIR A MONDAY
     // =====================================
-
-    await subirArchivoMonday(itemId, xmlPath, "archivo_xml"); 
-    // 🔴 CAMBIA "archivo_xml" por tu ID real
+    await subirArchivoMonday(itemId, xmlPath, "archivo_xml"); // 👈 CAMBIA este ID
 
     console.log("✅ XML subido a Monday");
 
     // =====================================
     // ✅ RESPUESTA FINAL
     // =====================================
-
     return res.status(200).json({
       success: true,
       message: "Factura generada correctamente",
