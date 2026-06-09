@@ -9,31 +9,50 @@ import { decodeBase64, saveFile } from "../lib/files.js";
 
 export default async function handler(req, res) {
 
-  // ✅ 🔥 Verificación de Monday
+  // =====================================
+  // ✅ 1. VERIFICACIÓN DE MONDAY (challenge)
+  // =====================================
   if (req.method === "GET") {
+    console.log("✅ Verificación Monday");
     return res.status(200).send(req.query.challenge);
   }
 
+  // =====================================
+  // ✅ 2. EVENTO REAL (POST)
+  // =====================================
   try {
-    console.log("📩 BODY:", JSON.stringify(req.body, null, 2));
-
-    // ================================
-    // 🧠 EVENTO
-    // ================================
+    console.log("📩 BODY COMPLETO:", JSON.stringify(req.body, null, 2));
 
     const event = req.body.event || req.body;
 
-    const itemId = event.pulseId || event.itemId;
+    // =====================================
+    // ✅ OBTENER ITEM ID (robusto)
+    // =====================================
+    const itemId =
+      req.body?.event?.pulseId ||
+      req.body?.pulseId ||
+      req.body?.itemId;
 
+    // 🔴 MUY IMPORTANTE: NO TRUENA SI NO HAY itemId
     if (!itemId) {
-      throw new Error("No se encontró itemId");
+      console.log("⚠️ Evento sin itemId (probablemente test o conexión)");
+
+      return res.status(200).json({
+        success: true,
+        message: "Evento recibido sin itemId (ignorado)",
+        body: req.body
+      });
     }
 
-    // ================================
-    // 📊 DATOS DESDE MONDAY
-    // ================================
+    console.log("📌 ITEM ID:", itemId);
+
+    // =====================================
+    // ✅ DATOS DESDE MONDAY
+    // =====================================
 
     const values = event.columnValues || event;
+
+    console.log("📊 VALUES RAW:", values);
 
     let data = {
       rfc: values.rfc,
@@ -42,11 +61,9 @@ export default async function handler(req, res) {
       monto: values.monto
     };
 
-    console.log("📊 RAW:", data);
-
-    // ================================
-    // ✅ LIMPIEZA
-    // ================================
+    // =====================================
+    // ✅ LIMPIAR DATA
+    // =====================================
 
     data = {
       rfc: data.rfc?.trim().toUpperCase(),
@@ -55,52 +72,96 @@ export default async function handler(req, res) {
       monto: Number(data.monto)
     };
 
-    if (!data.rfc || !data.cliente || !data.monto) {
-      throw new Error("Datos incompletos desde Monday");
-    }
-
     console.log("✅ DATA LIMPIA:", data);
 
-    // ================================
-    // 🧾 CFDI
-    // ================================
+    // =====================================
+    // ✅ VALIDACIONES
+    // =====================================
+
+    if (!data.rfc || !data.cliente || !data.monto) {
+      return res.status(200).json({
+        success: false,
+        error: "Datos incompletos",
+        data
+      });
+    }
+
+    if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(data.rfc)) {
+      return res.status(200).json({
+        success: false,
+        error: "RFC inválido",
+        data
+      });
+    }
+
+    if (isNaN(data.monto) || data.monto <= 0) {
+      return res.status(200).json({
+        success: false,
+        error: "Monto inválido",
+        data
+      });
+    }
+
+    // =====================================
+    // ✅ CONSTRUIR CFDI
+    // =====================================
 
     const cfdi = construirCFDI(data);
 
-    // ================================
-    // 🔥 TIMBRADO
-    // ================================
+    console.log("📦 CFDI:", JSON.stringify(cfdi, null, 2));
+
+    // =====================================
+    // ✅ TIMBRAR EN SW
+    // =====================================
 
     const result = await timbrarCFDI(cfdi);
 
-    console.log("✅ TIMBRADO:", result);
+    console.log("✅ RESPUESTA SW:", result);
 
-    // ================================
-    // 📄 XML
-    // ================================
+    // =====================================
+    // ✅ OBTENER XML
+    // =====================================
 
     const xmlBase64 = result?.data?.xml;
 
     if (!xmlBase64) {
-      throw new Error("SW no devolvió XML");
+      return res.status(200).json({
+        success: false,
+        error: "SW no devolvió XML",
+        result
+      });
     }
+
+    // =====================================
+    // ✅ GUARDAR XML
+    // =====================================
 
     const xmlBuffer = decodeBase64(xmlBase64);
     const xmlPath = saveFile(xmlBuffer, "factura.xml");
 
-    // ================================
-    // 📤 SUBIR A MONDAY
-    // ================================
+    console.log("📄 XML guardado:", xmlPath);
 
-    await subirArchivoMonday(itemId, xmlPath, "archivo_xml");
+    // =====================================
+    // ✅ SUBIR XML A MONDAY
+    // =====================================
+
+    await subirArchivoMonday(itemId, xmlPath, "archivo_xml"); 
+    // 🔴 CAMBIA "archivo_xml" por tu ID real
+
+    console.log("✅ XML subido a Monday");
+
+    // =====================================
+    // ✅ RESPUESTA FINAL
+    // =====================================
 
     return res.status(200).json({
       success: true,
-      message: "Factura generada OK"
+      message: "Factura generada correctamente",
+      itemId
     });
 
   } catch (error) {
-    console.error("❌ ERROR:", error);
+    console.error("❌ ERROR GENERAL:", error);
 
     return res.status(500).json({
       success: false,
