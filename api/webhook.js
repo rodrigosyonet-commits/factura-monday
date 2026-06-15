@@ -3,6 +3,13 @@ import { timbrarCFDI } from "../lib/sw.js";
 import { subirArchivoMonday } from "../lib/monday.js";
 import { decodeBase64, saveFile } from "../lib/files.js";
 
+// ✅ IMPORTANTE para Vercel
+export const config = {
+  api: {
+    bodyParser: true
+  }
+};
+
 export default async function handler(req, res) {
 
   // =====================================
@@ -14,15 +21,16 @@ export default async function handler(req, res) {
   );
 
   // =====================================
-  // ✅ 2. VERIFICACIÓN CHALLENGE (FIX DEFINITIVO)
+  // ✅ 2. VERIFICACIÓN CHALLENGE (FINAL ✅)
   // =====================================
-  if (req.query && req.query.challenge) {
-    console.log("✅ Challenge recibido:", req.query.challenge);
+  const challenge = req.body?.challenge || req.query?.challenge;
 
-    return res
-      .status(200)
-      .setHeader("Content-Type", "text/plain")
-      .send(String(req.query.challenge)); // 👈 EXACTO como lo quiere Monday
+  if (challenge) {
+    console.log("✅ Challenge recibido:", challenge);
+
+    return res.status(200).json({
+      challenge
+    });
   }
 
   // =====================================
@@ -41,7 +49,6 @@ export default async function handler(req, res) {
       req.body?.pulseId ||
       req.body?.itemId;
 
-    // ✅ NO ROMPER SI NO VIENE (esto es normal en tests)
     if (!itemId) {
       console.log("⚠️ Evento sin itemId (ignorado)");
 
@@ -144,7 +151,7 @@ export default async function handler(req, res) {
     // =====================================
     // ✅ SUBIR A MONDAY
     // =====================================
-    await subirArchivoMonday(itemId, xmlPath, "archivo_xml"); // 👈 CAMBIA este ID
+    await subirArchivoMonday(itemId, xmlPath, "archivo_xml");
 
     console.log("✅ XML subido a Monday");
 
