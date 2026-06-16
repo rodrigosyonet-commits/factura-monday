@@ -2,11 +2,10 @@ import fetch from "node-fetch";
 import fs from "fs";
 import FormData from "form-data";
 
-
 // ======================
-// ✅ CONFIG
+// CONFIG
 // ======================
-const MONDAY_API_KEY = process.env.MONDAY_API_KEY;
+const MONDAY_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjY2Mjc0MDM4OCwiYWFpIjoxMSwidWlkIjoxMDMyMTE3MDQsImlhZCI6IjIwMjYtMDUtMjVUMjI6NDE6NDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjgzMjY0MTAsInJnbiI6InVzZTEifQ.aCSoGeqhkzLvJ_TUn4xuIisR3seqR5VGbaBSR-2Os3w";
 
 const SINUBE = {
   URL: "http://ep-dot-facturanube.appspot.com/blob",
@@ -20,27 +19,61 @@ const SINUBE = {
 };
 
 // ======================
-// ✅ VERCEL CONFIG
+// CONFIG VERCEL
 // ======================
 export const config = {
-  api: {
-    bodyParser: true
-  }
+  api: { bodyParser: true }
 };
 
 // ======================
-// ✅ BASE64
+// UTIL BASE64
 // ======================
 function encodeParams(params) {
-  const raw = Object.entries(params)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n");
-
-  return Buffer.from(raw).toString("base64");
+  return Buffer.from(
+    Object.entries(params)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n")
+  ).toString("base64");
 }
 
 // ======================
-// ✅ FOLIO
+// FECHA ISO
+// ======================
+function getFechaISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ======================
+// UPDATE FECHA MONDAY
+// ======================
+async function actualizarFecha(itemId) {
+  const fecha = getFechaISO();
+
+  const query = `
+    mutation {
+      change_column_value(
+        item_id: ${itemId},
+        column_id: "date4",
+        value: "{\\"date\\": \\"${fecha}\\"}"
+      ) {
+        id
+      }
+    }
+  `;
+
+  await fetch("https://api.monday.com/v2", {
+    method: "POST",
+    headers: {
+      Authorization: MONDAY_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ query })
+  });
+}
+
+// ======================
+// FOLIO
 // ======================
 async function getFolio() {
   const params = encodeParams({
@@ -58,27 +91,34 @@ async function getFolio() {
   const xml = await res.text();
 
   const match = xml.match(/siguienteFolio="(\d+)"/);
-
-  if (!match) throw new Error("Error obteniendo folio");
+  if (!match) throw new Error("Sin folio");
 
   return match[1];
 }
 
 // ======================
-// ✅ XML FIJO
+// XML CFDI
 // ======================
 function generarXML(folio) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<Comprobante sistema="Stylos" generar="Factura" version="CFDI 4.0"
+<Comprobante 
+  sistema="Stylos"
+  generar="Factura"
+  version="CFDI 4.0"
+  exportacion="01"
   rfcEmisor="${SINUBE.RFC}"
   sucursal="${SINUBE.SUC}"
+  codigoReporte="CFDI 4.0"
+  permiteAgregarProductosNoInv="1"
   serie="${SINUBE.SERIE}"
   folio="${folio}"
   formaDePago="99"
   metodoDePago="PPD"
   subtotal="100"
   montoIVA="16"
-  total="116">
+  total="116"
+  monedaSAT="MXN"
+  difZonaHoraria="-6">
 
   <Receptor 
     rfc="SALR901217B89"
@@ -104,14 +144,10 @@ function generarXML(folio) {
 
 </Comprobante>`;
 }
-
 // ======================
-// ✅ TIMBRAR SINUBE
+// TIMBRAR (tipo 20)
 // ======================
-async function enviarASinube(xml) {
-
-  const base64XML = Buffer.from(xml).toString("base64");
-
+async function timbrar(xml) {
   const params = encodeParams({
     tipo: "20",
     emp: SINUBE.RFC,
@@ -119,7 +155,7 @@ async function enviarASinube(xml) {
     usu: SINUBE.USER,
     pwd: SINUBE.PASS,
     sis: SINUBE.SIS,
-    xml: base64XML
+    xml: Buffer.from(xml).toString("base64")
   });
 
   const res = await fetch(`${SINUBE.URL}?par=${params}`);
@@ -127,32 +163,58 @@ async function enviarASinube(xml) {
 }
 
 // ======================
-// ✅ EXTRAER XML + PDF
+// EXTRAER BASE64
 // ======================
-function extraerArchivos(xmlResponse) {
-
-  const xmlMatch = xmlResponse.match(/<xml>([\s\S]*?)<\/xml>/);
-  const pdfMatch = xmlResponse.match(/<pdf>([\s\S]*?)<\/pdf>/);
+function extraerArchivos(resp) {
+  const xml = resp.match(/<xml>([\s\S]*?)<\/xml>/);
+  const pdf = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
 
   return {
-    xml: xmlMatch ? Buffer.from(xmlMatch[1], "base64") : null,
-    pdf: pdfMatch ? Buffer.from(pdfMatch[1], "base64") : null
+    xml: xml ? Buffer.from(xml[1], "base64") : null,
+    pdf: pdf ? Buffer.from(pdf[1], "base64") : null
   };
 }
 
 // ======================
-// ✅ SAVE FILE
+// FALLBACK PDF SINUBE
 // ======================
-function saveFile(buffer, filename) {
-  const filePath = `/tmp/${filename}`;
-  fs.writeFileSync(filePath, buffer);
-  return filePath;
+async function descargarPDF(serie, folio) {
+
+  const params = encodeParams({
+    tipo: "1007",
+    emprep: "neoreportes",
+    emp: SINUBE.RFC,
+    suc: SINUBE.SUC,
+    reporte: "CFDI 4.0",
+    serie: serie,
+    folio: folio,
+    usu: SINUBE.USER,
+    pwd: SINUBE.PASS,
+    sist: SINUBE.SIS,
+    difzh: "-6",
+    nompdf: `FACT_${folio}`
+  });
+
+  const res = await fetch(`${SINUBE.URL}?par=${params});
+
+  const buffer = await res.arrayBuffer();
+
+  return Buffer.from(buffer);
+}
+  
+// ======================
+// SAVE
+// ======================
+function saveFile(buffer, name) {
+  const path = `/tmp/${name}`;
+  fs.writeFileSync(path, buffer);
+  return path;
 }
 
 // ======================
-// ✅ SUBIR A MONDAY
+// SUBIR MONDAY
 // ======================
-async function uploadFile(itemId, filePath) {
+async function uploadFile(itemId, path) {
 
   const query = `
     mutation ($file: File!) {
@@ -160,35 +222,27 @@ async function uploadFile(itemId, filePath) {
         item_id: ${itemId},
         column_id: "file_mm4be9tf",
         file: $file
-      ) {
-        id
-      }
+      ) { id }
     }
   `;
 
-  const formData = new FormData();
-  formData.append("query", query);
-  formData.append("variables[file]", fs.createReadStream(filePath));
+  const form = new FormData();
+  form.append("query", query);
+  form.append("variables[file]", fs.createReadStream(path));
 
   await fetch("https://api.monday.com/v2/file", {
     method: "POST",
-    headers: {
-      Authorization: MONDAY_API_KEY
-    },
-    body: formData
+    headers: { Authorization: MONDAY_API_KEY },
+    body: form
   });
 }
 
 // ======================
-// ✅ WEBHOOK
+// WEBHOOK
 // ======================
 export default async function handler(req, res) {
 
-  // ✅ NO CACHE
-  res.setHeader(
-    "Cache-Control",
-    "no-store, no-cache, must-revalidate, proxy-revalidate"
-  );
+  res.setHeader("Cache-Control", "no-store");
 
   // ✅ CHALLENGE
   if (req.method === "GET" && req.query?.challenge) {
@@ -201,38 +255,45 @@ export default async function handler(req, res) {
 
   try {
 
-    const event = req.body.event;
-    const itemId = event?.pulseId;
-
+    const itemId = req.body?.event?.pulseId;
     if (!itemId) return res.status(200).json({ ok: true });
 
-    // ✅ Flujo directo
+    // ======================
+    // FLUJO
+    // ======================
     const folio = await getFolio();
+
     const xml = generarXML(folio);
+    const resp = await timbrar(xml);
 
-    const response = await enviarASinube(xml);
-    const files = extraerArchivos(response);
+    let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
-    if (!files.xml || !files.pdf) {
-      throw new Error("SINUBE no regresó archivos");
+    // ✅ fallback PDF
+    if (!pdf) {
+      console.log("⚠️ PDF no vino, usando fallback 1007");
+      pdf = await descargarPDF(SINUBE.SERIE, folio);
     }
 
-    const xmlPath = saveFile(files.xml, `factura-${folio}.xml`);
-    const pdfPath = saveFile(files.pdf, `factura-${folio}.pdf`);
+    if (!xmlFile) throw new Error("SINUBE no generó XML");
+
+    const xmlPath = saveFile(xmlFile, `factura-${folio}.xml`);
+    const pdfPath = saveFile(pdf, `factura-${folio}.pdf`);
 
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
+
+    await actualizarFecha(itemId);
 
     return res.status(200).json({
       success: true,
       folio
     });
 
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
 
     return res.status(500).json({
-      error: error.message
+      error: err.message
     });
   }
 }
