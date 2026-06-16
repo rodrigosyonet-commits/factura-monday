@@ -2,21 +2,7 @@ import fetch from "node-fetch";
 import fs from "fs";
 import FormData from "form-data";
 
-// =====================================
-// ✅ CHALLENGE MONDAY (OBLIGATORIO)
-// =====================================
 
-// 1. GET challenge (cuando registras webhook)
-if (req.method === "GET" && req.query?.challenge) {
-  console.log("✅ Challenge GET:", req.query.challenge);
-  return res.status(200).json({ challenge: req.query.challenge });
-}
-
-// 2. POST challenge (algunas validaciones)
-if (req.method === "POST" && req.body?.challenge) {
-  console.log("✅ Challenge POST:", req.body.challenge);
-  return res.status(200).json({ challenge: req.body.challenge });
-}
 // ======================
 // ✅ CONFIG
 // ======================
