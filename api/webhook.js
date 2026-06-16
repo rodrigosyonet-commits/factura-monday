@@ -1,174 +1,236 @@
-import { construirCFDI } from "../lib/cfdi.js";
-import { timbrarCFDI } from "../lib/sw.js";
-import { subirArchivoMonday } from "../lib/monday.js";
-import { decodeBase64, saveFile } from "../lib/files.js";
+import fetch from "node-fetch";
+import fs from "fs";
+import FormData from "form-data";
 
-// ✅ IMPORTANTE para Vercel
+// ======================
+// ✅ CONFIG
+// ======================
+const MONDAY_API_KEY = process.env.MONDAY_API_KEY;
+
+const SINUBE = {
+  URL: "http://ep-dot-facturanube.appspot.com/blob",
+  RFC: "COR120522TD6",
+  SUC: "Matriz",
+  USER: "sistemas1.qsitservices@gmail.com",
+  PASS: "COR120522TD6",
+  SIS: "Stylos",
+  CERT: "00001000000711090217",
+  SERIE: "F"
+};
+
+// ======================
+// ✅ VERCEL CONFIG
+// ======================
 export const config = {
   api: {
     bodyParser: true
   }
 };
 
+// ======================
+// ✅ BASE64
+// ======================
+function encodeParams(params) {
+  const raw = Object.entries(params)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+
+  return Buffer.from(raw).toString("base64");
+}
+
+// ======================
+// ✅ FOLIO
+// ======================
+async function getFolio() {
+  const params = encodeParams({
+    tipo: "10",
+    emp: SINUBE.RFC,
+    suc: SINUBE.SUC,
+    usu: SINUBE.USER,
+    pwd: SINUBE.PASS,
+    sis: SINUBE.SIS,
+    cer: SINUBE.CERT,
+    ser: SINUBE.SERIE
+  });
+
+  const res = await fetch(`${SINUBE.URL}?par=${params}`);
+  const xml = await res.text();
+
+  const match = xml.match(/siguienteFolio="(\d+)"/);
+
+  if (!match) throw new Error("Error obteniendo folio");
+
+  return match[1];
+}
+
+// ======================
+// ✅ XML FIJO
+// ======================
+function generarXML(folio) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Comprobante sistema="Stylos" generar="Factura" version="CFDI 4.0"
+  rfcEmisor="${SINUBE.RFC}"
+  sucursal="${SINUBE.SUC}"
+  serie="${SINUBE.SERIE}"
+  folio="${folio}"
+  formaDePago="99"
+  metodoDePago="PPD"
+  subtotal="100"
+  montoIVA="16"
+  total="116">
+
+  <Receptor 
+    rfc="SALR901217B89"
+    razonSocial="RODRIGO SANTIAGO LÓPEZ"
+    usoCFDI="S01"
+    regimenFiscal="612" />
+
+  <ReceptorDireccion
+    pais="México"
+    codigoPostal="57610" />
+
+  <Conceptos>
+    <Concepto 
+      productoSAT="10101504"
+      descripcion="Servicio de tecnología"
+      cantidad="1"
+      unidadSAT="E48"
+      valorUnitario="100"
+      importe="100"
+      montoIVA="16"
+      objetoImp="02" />
+  </Conceptos>
+
+</Comprobante>`;
+}
+
+// ======================
+// ✅ TIMBRAR SINUBE
+// ======================
+async function enviarASinube(xml) {
+
+  const base64XML = Buffer.from(xml).toString("base64");
+
+  const params = encodeParams({
+    tipo: "20",
+    emp: SINUBE.RFC,
+    suc: SINUBE.SUC,
+    usu: SINUBE.USER,
+    pwd: SINUBE.PASS,
+    sis: SINUBE.SIS,
+    xml: base64XML
+  });
+
+  const res = await fetch(`${SINUBE.URL}?par=${params}`);
+  return await res.text();
+}
+
+// ======================
+// ✅ EXTRAER XML + PDF
+// ======================
+function extraerArchivos(xmlResponse) {
+
+  const xmlMatch = xmlResponse.match(/<xml>([\s\S]*?)<\/xml>/);
+  const pdfMatch = xmlResponse.match(/<pdf>([\s\S]*?)<\/pdf>/);
+
+  return {
+    xml: xmlMatch ? Buffer.from(xmlMatch[1], "base64") : null,
+    pdf: pdfMatch ? Buffer.from(pdfMatch[1], "base64") : null
+  };
+}
+
+// ======================
+// ✅ SAVE FILE
+// ======================
+function saveFile(buffer, filename) {
+  const filePath = `/tmp/${filename}`;
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
+// ======================
+// ✅ SUBIR A MONDAY
+// ======================
+async function uploadFile(itemId, filePath) {
+
+  const query = `
+    mutation ($file: File!) {
+      add_file_to_column(
+        item_id: ${itemId},
+        column_id: "file_mm4be9tf",
+        file: $file
+      ) {
+        id
+      }
+    }
+  `;
+
+  const formData = new FormData();
+  formData.append("query", query);
+  formData.append("variables[file]", fs.createReadStream(filePath));
+
+  await fetch("https://api.monday.com/v2/file", {
+    method: "POST",
+    headers: {
+      Authorization: MONDAY_API_KEY
+    },
+    body: formData
+  });
+}
+
+// ======================
+// ✅ WEBHOOK
+// ======================
 export default async function handler(req, res) {
 
-  // =====================================
-  // ✅ 1. EVITAR CACHE (CRÍTICO PARA MONDAY)
-  // =====================================
+  // ✅ NO CACHE
   res.setHeader(
     "Cache-Control",
     "no-store, no-cache, must-revalidate, proxy-revalidate"
   );
 
-  // =====================================
-  // ✅ 2. VERIFICACIÓN CHALLENGE (FINAL ✅)
-  // =====================================
-  const challenge = req.body?.challenge || req.query?.challenge;
-
-  if (challenge) {
-    console.log("✅ Challenge recibido:", challenge);
-
-    return res.status(200).json({
-      challenge
-    });
+  // ✅ CHALLENGE
+  if (req.method === "GET" && req.query?.challenge) {
+    return res.status(200).json({ challenge: req.query.challenge });
   }
 
-  // =====================================
-  // ✅ 3. EVENTO REAL (POST)
-  // =====================================
+  if (req.method === "POST" && req.body?.challenge) {
+    return res.status(200).json({ challenge: req.body.challenge });
+  }
+
   try {
-    console.log("📩 BODY COMPLETO:", JSON.stringify(req.body, null, 2));
 
-    const event = req.body.event || req.body;
+    const event = req.body.event;
+    const itemId = event?.pulseId;
 
-    // =====================================
-    // ✅ OBTENER ITEM ID (ROBUSTO)
-    // =====================================
-    const itemId =
-      req.body?.event?.pulseId ||
-      req.body?.pulseId ||
-      req.body?.itemId;
+    if (!itemId) return res.status(200).json({ ok: true });
 
-    if (!itemId) {
-      console.log("⚠️ Evento sin itemId (ignorado)");
+    // ✅ Flujo directo
+    const folio = await getFolio();
+    const xml = generarXML(folio);
 
-      return res.status(200).json({
-        success: true,
-        message: "Evento recibido sin itemId (ignore)"
-      });
+    const response = await enviarASinube(xml);
+    const files = extraerArchivos(response);
+
+    if (!files.xml || !files.pdf) {
+      throw new Error("SINUBE no regresó archivos");
     }
 
-    console.log("📌 ITEM ID:", itemId);
+    const xmlPath = saveFile(files.xml, `factura-${folio}.xml`);
+    const pdfPath = saveFile(files.pdf, `factura-${folio}.pdf`);
 
-    // =====================================
-    // ✅ DATOS DESDE MONDAY
-    // =====================================
-    const values = event.columnValues || event;
+    await uploadFile(itemId, xmlPath);
+    await uploadFile(itemId, pdfPath);
 
-    console.log("📊 VALUES RAW:", values);
-
-    let data = {
-      rfc: values.rfc,
-      cliente: values.cliente,
-      uso_cfdi: values.uso_cfdi,
-      monto: values.monto
-    };
-
-    // =====================================
-    // ✅ LIMPIEZA
-    // =====================================
-    data = {
-      rfc: data.rfc?.trim().toUpperCase(),
-      cliente: data.cliente?.trim(),
-      uso_cfdi: data.uso_cfdi?.trim().toUpperCase(),
-      monto: Number(data.monto)
-    };
-
-    console.log("✅ DATA LIMPIA:", data);
-
-    // =====================================
-    // ✅ VALIDACIONES
-    // =====================================
-    if (!data.rfc || !data.cliente || !data.monto) {
-      return res.status(200).json({
-        success: false,
-        error: "Datos incompletos",
-        data
-      });
-    }
-
-    if (!/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(data.rfc)) {
-      return res.status(200).json({
-        success: false,
-        error: "RFC inválido",
-        data
-      });
-    }
-
-    if (isNaN(data.monto) || data.monto <= 0) {
-      return res.status(200).json({
-        success: false,
-        error: "Monto inválido",
-        data
-      });
-    }
-
-    // =====================================
-    // ✅ CONSTRUIR CFDI
-    // =====================================
-    const cfdi = construirCFDI(data);
-
-    console.log("📦 CFDI:", JSON.stringify(cfdi, null, 2));
-
-    // =====================================
-    // ✅ TIMBRAR EN SW
-    // =====================================
-    const result = await timbrarCFDI(cfdi);
-
-    console.log("✅ RESPUESTA SW:", result);
-
-    // =====================================
-    // ✅ XML
-    // =====================================
-    const xmlBase64 = result?.data?.xml;
-
-    if (!xmlBase64) {
-      return res.status(200).json({
-        success: false,
-        error: "SW no devolvió XML",
-        result
-      });
-    }
-
-    // =====================================
-    // ✅ GUARDAR ARCHIVO
-    // =====================================
-    const xmlBuffer = decodeBase64(xmlBase64);
-    const xmlPath = saveFile(xmlBuffer, "factura.xml");
-
-    console.log("📄 XML guardado en:", xmlPath);
-
-    // =====================================
-    // ✅ SUBIR A MONDAY
-    // =====================================
-    await subirArchivoMonday(itemId, xmlPath, "archivo_xml");
-
-    console.log("✅ XML subido a Monday");
-
-    // =====================================
-    // ✅ RESPUESTA FINAL
-    // =====================================
     return res.status(200).json({
       success: true,
-      message: "Factura generada correctamente",
-      itemId
+      folio
     });
 
   } catch (error) {
-    console.error("❌ ERROR GENERAL:", error);
+    console.error(error);
 
     return res.status(500).json({
-      success: false,
       error: error.message
     });
   }
