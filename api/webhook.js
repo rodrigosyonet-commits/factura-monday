@@ -134,14 +134,15 @@ async function uploadFile(itemId, filePath) {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY,
-      ...form.getHeaders() // 🔥 ESTE ES EL FIX
+      ...form.getHeaders()
     },
     body: form
   });
 
+  // 🔥 CRÍTICO
   const text = await res.text();
 
-  console.log("📥 RESPUESTA MONDAY:");
+  console.log("📥 RESPUESTA MONDAY FILE:");
   console.log(text);
 }
 
