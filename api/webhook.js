@@ -267,18 +267,33 @@ export default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "no-store");
 
-  // ======================
-// ✅ CHALLENGE CORRECTO
-// ======================
-if (req.method === "GET" && req.query?.challenge) {
-  console.log("✅ Challenge GET:", req.query.challenge);
-  return res.status(200).json({ challenge: req.query.challenge });
-}
+  console.log("🚨 WEBHOOK RECIBIDO");
 
-if (req.method === "POST" && req.body?.challenge) {
-  console.log("✅ Challenge POST:", req.body.challenge);
-  return res.status(200).json({ challenge: req.body.challenge });
-}
+  // ======================
+  // ✅ CHALLENGE
+  // ======================
+  if (req.method === "GET" && req.query?.challenge) {
+    console.log("✅ Challenge GET:", req.query.challenge);
+    return res.status(200).json({ challenge: req.query.challenge });
+  }
+
+  if (req.method === "POST" && req.body?.challenge) {
+    console.log("✅ Challenge POST:", req.body.challenge);
+    return res.status(200).json({ challenge: req.body.challenge });
+  }
+
+  try {
+
+    console.log("📩 EVENTO:", JSON.stringify(req.body, null, 2));
+
+    const itemId = req.body?.event?.pulseId;
+
+    if (!itemId) {
+      console.log("⚠️ Sin itemId");
+      return res.status(200).json({ ok: true });
+    }
+
+    console.log("📌 ITEM ID:", itemId);
 
     // ======================
     // ✅ 1. FOLIO
@@ -302,15 +317,7 @@ if (req.method === "POST" && req.body?.challenge) {
     // ======================
     console.log("🚀 Enviando a SINUBE...");
 
-    let resp;
-
-    try {
-      resp = await timbrar(xml);
-    } catch (err) {
-      console.error("❌ ERROR FETCH SINUBE:");
-      console.error(err);
-      throw new Error("Error conexión SINUBE");
-    }
+    const resp = await timbrar(xml);
 
     console.log("📥 RESPUESTA SINUBE:");
     console.log("----------------------------------");
@@ -322,19 +329,15 @@ if (req.method === "POST" && req.body?.challenge) {
     }
 
     // ======================
-    // ✅ 4. ERROR SINUBE
+    // ✅ ERROR SINUBE
     // ======================
     if (resp.toLowerCase().includes("error")) {
-      console.error("❌ SINUBE ERROR:");
-      console.error(resp);
-      throw new Error(resp);
+      throw new Error(`SINUBE ERROR:\n${resp}`);
     }
 
     // ======================
-    // ✅ 5. EXTRAER URLS
+    // ✅ 4. EXTRAER URLS
     // ======================
-    console.log("🔍 Extrayendo URLs...");
-
     const xmlMatch = resp.match(/<xml>([\s\S]*?)<\/xml>/);
     const pdfMatch = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
 
@@ -345,22 +348,18 @@ if (req.method === "POST" && req.body?.challenge) {
     console.log("🌐 PDF URL:", pdfUrl);
 
     if (!xmlUrl) {
-      console.error("❌ RESPUESTA COMPLETA:");
-      console.error(resp);
       throw new Error("SINUBE no devolvió URL XML");
     }
 
     // ======================
-    // ✅ 6. DESCARGAR XML
+    // ✅ 5. DESCARGAR XML
     // ======================
     console.log("⬇️ Descargando XML...");
     const xmlRes = await fetch(xmlUrl);
     const xmlBuffer = Buffer.from(await xmlRes.arrayBuffer());
 
-    console.log("✅ XML descargado:", xmlBuffer.length);
-
     // ======================
-    // ✅ 7. PDF
+    // ✅ 6. DESCARGAR PDF
     // ======================
     let pdfBuffer;
 
@@ -368,14 +367,13 @@ if (req.method === "POST" && req.body?.challenge) {
       console.log("⬇️ Descargando PDF...");
       const pdfRes = await fetch(pdfUrl);
       pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
-      console.log("✅ PDF descargado:", pdfBuffer.length);
     } else {
       console.log("⚠️ PDF fallback...");
       pdfBuffer = await descargarPDF(SINUBE.SERIE, folio);
     }
 
     // ======================
-    // ✅ 8. SAVE
+    // ✅ 7. SAVE FILES
     // ======================
     const xmlPath = saveFile(xmlBuffer, `factura-${folio}.xml`);
     const pdfPath = saveFile(pdfBuffer, `factura-${folio}.pdf`);
@@ -384,20 +382,16 @@ if (req.method === "POST" && req.body?.challenge) {
     console.log("📁 PDF Path:", pdfPath);
 
     // ======================
-    // ✅ 9. MONDAY
+    // ✅ 8. SUBIR MONDAY
     // ======================
-    console.log("📤 Subiendo a Monday...");
-
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
 
     console.log("✅ Archivos subidos");
 
     // ======================
-    // ✅ 10. FECHA
+    // ✅ 9. FECHA
     // ======================
-    console.log("📅 Actualizando date4...");
-
     await actualizarFecha(itemId);
 
     console.log("✅ PROCESO COMPLETO");
@@ -409,10 +403,11 @@ if (req.method === "POST" && req.body?.challenge) {
 
   } catch (err) {
 
-    console.error("❌ ERROR GENERAL:");
+    console.error("❌ ERROR:");
     console.error(err);
 
-    return res.status(500).json({
+    // ✅ MUY IMPORTANTE PARA MONDAY
+    return res.status(200).json({
       error: err.message
     });
   }
