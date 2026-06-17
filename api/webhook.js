@@ -138,16 +138,18 @@ async function uploadFile(itemId, filePath) {
     }
   `;
 
+  const fileBuffer = fs.readFileSync(filePath);
+
   const form = new FormData();
+
   form.append("query", query);
-form.append(
-  "variables[file]",
-  fs.readFileSync(filePath),
-  {
-    filename: filePath.split("/").pop()
-  }
-);
-  const res = await fetch("https://api.monday.com/v2/file", {
+
+  form.append("variables[file]", fileBuffer, {
+    filename: filePath.split("/").pop(),
+    contentType: "application/octet-stream" // 🔥 IMPORTANTE
+  });
+
+  const response = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY,
@@ -156,11 +158,14 @@ form.append(
     body: form
   });
 
-  // 🔥 CRÍTICO
-  const text = await res.text();
+  const text = await response.text();
 
   console.log("📥 RESPUESTA MONDAY FILE:");
   console.log(text);
+
+  if (!text) {
+    throw new Error("Monday respondió vacío al subir archivo");
+  }
 }
 
 // ======================
