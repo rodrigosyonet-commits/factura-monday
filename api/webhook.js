@@ -162,7 +162,8 @@ async function timbrar(xml) {
 
   const url = `${SINUBE.URL}?par=${params}`;
 
-  console.log("📤 URL:", url);
+  console.log("📤 URL TIMBRAR:");
+  console.log(url);
 
   const res = await fetch(url);
 
@@ -170,13 +171,29 @@ async function timbrar(xml) {
 
   const buffer = await res.arrayBuffer();
 
-  console.log("📦 BYTES:", buffer.byteLength);
+  console.log("📦 BYTES RECIBIDOS:", buffer.byteLength);
 
-  const text = Buffer.from(buffer).toString();
+  // ✅ LOG RAW REAL
+  const raw = new Uint8Array(buffer);
+
+  console.log("🔍 PRIMEROS BYTES:", raw.slice(0, 50));
+
+  // ✅ INTENTAR DECODIFICAR
+  let text;
+  try {
+    text = Buffer.from(buffer).toString("utf-8");
+  } catch (e) {
+    console.log("⚠️ Error al convertir a string");
+    text = "";
+  }
+
+  console.log("📥 TEXTO DECODIFICADO:");
+  console.log("----------------------------------");
+  console.log(text);
+  console.log("----------------------------------");
 
   return text;
 }
-
 // ======================
 // EXTRAER XML + PDF
 // ======================
