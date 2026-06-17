@@ -209,7 +209,9 @@ xport default async function handler(req, res) {
 
   console.log("🚨 WEBHOOK RECIBIDO");
 
-  // ✅ Challenge Monday
+ // ======================
+  // ✅ CHALLENGE
+  // ======================
   if (req.method === "GET" && req.query?.challenge) {
     return res.status(200).json({ challenge: req.query.challenge });
   }
@@ -220,13 +222,17 @@ xport default async function handler(req, res) {
 
   try {
 
+    console.log("📩 EVENTO:", JSON.stringify(req.body));
+
     const itemId = req.body?.event?.pulseId;
 
     if (!itemId) {
+      console.log("⚠️ Sin itemId");
       return res.status(200).json({ ok: true });
     }
 
-    console.log("📌 ITEM:", itemId);
+    console.log("📌 ITEM ID:", itemId);
+
 
     // ======================
     // ✅ 1. FILTRO POR TIPO
