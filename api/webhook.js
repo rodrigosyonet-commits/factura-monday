@@ -253,87 +253,155 @@ export default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "no-store");
 
-  // ✅ Challenge
+  // ======================
+  // ✅ CHALLENGE MONDAY
+  // ======================
   if (req.method === "GET" && req.query?.challenge) {
+    console.log("✅ Challenge GET");
     return res.status(200).json({ challenge: req.query.challenge });
   }
 
   if (req.method === "POST" && req.body?.challenge) {
+    console.log("✅ Challenge POST");
     return res.status(200).json({ challenge: req.body.challenge });
   }
 
   try {
 
+    console.log("📩 EVENTO COMPLETO:", JSON.stringify(req.body, null, 2));
+
     const itemId = req.body?.event?.pulseId;
-    if (!itemId) return res.status(200).json({ ok: true });
+
+    if (!itemId) {
+      console.log("⚠️ No hay itemId");
+      return res.status(200).json({ ok: true });
+    }
+
+    console.log("📌 ITEM ID:", itemId);
 
     // ======================
-    // ✅ FLUJO
+    // ✅ 1. OBTENER FOLIO
     // ======================
+    console.log("🔄 Obteniendo folio...");
 
     const folio = await getFolio();
 
+    console.log("✅ FOLIO:", folio);
+
+    // ======================
+    // ✅ 2. GENERAR XML
+    // ======================
     const xml = generarXML(folio);
 
-    // ✅ TIMBRADO
-let resp;
+    console.log("📄 XML GENERADO:");
+    console.log("----------------------------------");
+    console.log(xml);
+    console.log("----------------------------------");
 
-try {
-  resp = await timbrar(xml);
+    // ======================
+    // ✅ 3. TIMBRAR
+    // ======================
+    console.log("🚀 Enviando XML a SINUBE...");
 
-  console.log("📥 SINUBE TIMBRADO RAW:");
-  console.log("----------------------------------");
-  console.log(resp);
-  console.log("----------------------------------");
+    let resp;
 
-} catch (err) {
-  console.error("❌ ERROR EN TIMBRAR:");
-  console.error(err);
+    try {
+      resp = await timbrar(xml);
 
-  throw new Error("Fallo en llamada a SINUBE");
-}
-if (!resp || typeof resp !== "string") {
-  throw new Error("SINUBE no respondió correctamente");
-}
-    // ✅ DETECTAR ERROR REAL DE SINUBE
-const errorMatch = resp.match(/<error>([\s\S]*?)<\/error>/);
+      console.log("📥 SINUBE TIMBRADO RAW:");
+      console.log("----------------------------------");
+      console.log(resp);
+      console.log("----------------------------------");
 
+    } catch (err) {
+      console.error("❌ ERROR EN FETCH SINUBE:");
+      console.error(err);
+      throw new Error("Fallo en llamada a SINUBE");
+    }
 
-// ✅ forzar detección de error en cualquier formato
-if (resp.toLowerCase().includes("error")) {
-  throw new Error(`SINUBE RESPONDIÓ ERROR:\n${resp}`);
-}
+    if (!resp) {
+      throw new Error("SINUBE respondió vacío");
+    }
 
-    // ✅ obtener URLs
-const { xmlUrl, pdfUrl } = extraerUrls(resp);
+    // ======================
+    // ✅ 4. DETECTAR ERROR SINUBE
+    // ======================
+    if (resp.toLowerCase().includes("error")) {
+      console.error("❌ SINUBE ERROR DETECTADO:");
+      console.error(resp);
+      throw new Error(`Error SINUBE:\n${resp}`);
+    }
 
-if (!xmlUrl) {
-  throw new Error("SINUBE no devolvió URL de XML");
-}
+    // ======================
+    // ✅ 5. EXTRAER URLS
+    // ======================
+    console.log("🔍 Extrayendo URLs...");
 
-// ✅ descargar XML
-const xmlFile = await descargarArchivo(xmlUrl);
+    const xmlMatch = resp.match(/<xml>([\s\S]*?)<\/xml>/);
+    const pdfMatch = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
 
-// ✅ descargar PDF (directo o fallback)
-let pdf;
+    const xmlUrl = xmlMatch ? xmlMatch[1].trim() : null;
+    const pdfUrl = pdfMatch ? pdfMatch[1].trim() : null;
 
-if (pdfUrl) {
-  pdf = await descargarArchivo(pdfUrl);
-} else {
-  console.log("⚠️ PDF no vino, usando fallback 1007");
-  pdf = await descargarPDF(SINUBE.SERIE, folio);
-}
+    console.log("🌐 XML URL:", xmlUrl);
+    console.log("🌐 PDF URL:", pdfUrl);
 
+    if (!xmlUrl) {
+      throw new Error("SINUBE no devolvió URL XML");
+    }
 
-    if (!xmlFile) throw new Error("SINUBE no generó XML");
+    // ======================
+    // ✅ 6. DESCARGAR XML
+    // ======================
+    console.log("⬇️ Descargando XML...");
 
-    const xmlPath = saveFile(xmlFile, `factura-${folio}.xml`);
-    const pdfPath = saveFile(pdf, `factura-${folio}.pdf`);
+    const xmlRes = await fetch(xmlUrl);
+    const xmlBuffer = Buffer.from(await xmlRes.arrayBuffer());
+
+    console.log("✅ XML descargado (bytes):", xmlBuffer.length);
+
+    // ======================
+    // ✅ 7. DESCARGAR PDF
+    // ======================
+    let pdfBuffer;
+
+    if (pdfUrl) {
+      console.log("⬇️ Descargando PDF...");
+      const pdfRes = await fetch(pdfUrl);
+      pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+      console.log("✅ PDF descargado (bytes):", pdfBuffer.length);
+    } else {
+      console.log("⚠️ PDF no vino, usando fallback...");
+      pdfBuffer = await descargarPDF(SINUBE.SERIE, folio);
+    }
+
+    // ======================
+    // ✅ 8. GUARDAR ARCHIVOS
+    // ======================
+    const xmlPath = saveFile(xmlBuffer, `factura-${folio}.xml`);
+    const pdfPath = saveFile(pdfBuffer, `factura-${folio}.pdf`);
+
+    console.log("📁 XML Path:", xmlPath);
+    console.log("📁 PDF Path:", pdfPath);
+
+    // ======================
+    // ✅ 9. SUBIR A MONDAY
+    // ======================
+    console.log("📤 Subiendo archivos a Monday...");
 
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
 
+    console.log("✅ Archivos subidos");
+
+    // ======================
+    // ✅ 10. ACTUALIZAR FECHA
+    // ======================
+    console.log("📅 Actualizando fecha...");
+
     await actualizarFecha(itemId);
+
+    console.log("✅ Proceso completo");
 
     return res.status(200).json({
       success: true,
@@ -341,6 +409,8 @@ if (pdfUrl) {
     });
 
   } catch (err) {
+
+    console.error("❌ ERROR GENERAL:");
     console.error(err);
 
     return res.status(500).json({
