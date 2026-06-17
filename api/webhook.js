@@ -112,6 +112,8 @@ function saveFile(buffer, filename) {
 // ======================
 async function uploadFile(itemId, filePath) {
 
+  console.log("📤 Subiendo archivo:", filePath);
+
   const query = `
     mutation ($file: File!) {
       add_file_to_column(
@@ -128,13 +130,19 @@ async function uploadFile(itemId, filePath) {
   form.append("query", query);
   form.append("variables[file]", fs.createReadStream(filePath));
 
-  await fetch("https://api.monday.com/v2/file", {
+  const res = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
-      Authorization: MONDAY_API_KEY
+      Authorization: MONDAY_API_KEY,
+      ...form.getHeaders() // 🔥 ESTE ES EL FIX
     },
     body: form
   });
+
+  const text = await res.text();
+
+  console.log("📥 RESPUESTA MONDAY:");
+  console.log(text);
 }
 
 // ======================
