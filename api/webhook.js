@@ -68,6 +68,7 @@ async function actualizarFecha(itemId) {
 // FOLIO
 // ======================
 async function getFolio() {
+
   const params = encodeParams({
     tipo: "10",
     emp: SINUBE.RFC,
@@ -82,20 +83,27 @@ async function getFolio() {
   const res = await fetch(`${SINUBE.URL}?par=${params}`);
   const xml = await res.text();
 
-  console.log("📥 RESPUESTA SINUBE FOLIO:", xml); // 👈 CRÍTICO
+  console.log("📥 SINUBE FOLIO RAW:", xml);
 
-  // ✅ Si hay error, lo mostramos claro
+  // ✅ detectar error explícito
   if (xml.includes("<error>")) {
     throw new Error(`SINUBE ERROR: ${xml}`);
   }
 
-  const match = xml.match(/siguienteFolio="(\d+)"/);
+  // ✅ intento 1: formato clásico
+  let match = xml.match(/siguienteFolio="(\d+)"/);
 
-  if (!match) {
-    throw new Error("No se encontró siguienteFolio");
+  if (match) return match[1];
+
+  // ✅ intento 2: fallback usando folioActual + 1
+  const matchActual = xml.match(/folioActual="(\d+)"/);
+
+  if (matchActual) {
+    const siguiente = Number(matchActual[1]) + 1;
+    return String(siguiente);
   }
 
-  return match[1];
+  throw new Error("No se pudo interpretar folio SINUBE");
 }
 
 // ======================
