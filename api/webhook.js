@@ -24,20 +24,23 @@ async function actualizarFecha(itemId) {
 
   console.log("📅 Enviando fecha:", fecha);
 
+  const values = JSON.stringify({
+    text_mm4dca2d: fecha
+  });
+
   const query = `
     mutation {
-      change_column_value(
+      change_multiple_column_values(
         item_id: ${itemId},
-        column_id: "text_mm4dca2d",
-        value: "${fecha}"
+        board_id: 18417889549,
+        column_values: ${JSON.stringify(values)}
       ) {
         id
       }
     }
   `;
 
-  // ✅ IMPORTANTE: definir res correctamente
-  const response = await fetch("https://api.monday.com/v2", {
+  const res = await fetch("https://api.monday.com/v2", {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY,
@@ -46,12 +49,11 @@ async function actualizarFecha(itemId) {
     body: JSON.stringify({ query })
   });
 
-  const text = await response.text();
+  const text = await res.text();
 
   console.log("📥 RESPUESTA MONDAY DATE:");
   console.log(text);
 }
-
 
 // ======================
 // ✅ XML DE PRUEBA
