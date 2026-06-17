@@ -25,8 +25,8 @@ async function actualizarFecha(itemId) {
     mutation {
       change_column_value(
         item_id: ${itemId},
-        column_id: "date4",
-        value: "{\\"date\\": \\"${fecha}\\"}"
+        column_id: "text_mm4dca2d",
+        value: "${fecha}"
       ) {
         id
       }
@@ -41,7 +41,14 @@ async function actualizarFecha(itemId) {
     },
     body: JSON.stringify({ query })
   });
+
+  const text = await res.text();
+
+  console.log("📥 RESPUESTA MONDAY DATE:");
+  console.log(text);
 }
+
+
 
 // ======================
 // ✅ XML DE PRUEBA
@@ -128,8 +135,13 @@ async function uploadFile(itemId, filePath) {
 
   const form = new FormData();
   form.append("query", query);
-  form.append("variables[file]", fs.createReadStream(filePath));
-
+form.append(
+  "variables[file]",
+  fs.readFileSync(filePath),
+  {
+    filename: filePath.split("/").pop()
+  }
+);
   const res = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
