@@ -6,16 +6,14 @@ export const config = {
   api: { bodyParser: true }
 };
 
-/ ======================
+// ======================
 // ✅ OBTENER TIPO (Emitidos / Recibidos)
 // ======================
 async function obtenerTipoFactura(itemId) {
-
   const query = `
     query {
       items(ids: ${itemId}) {
         column_values(ids: ["color_mm4csect"]) {
-          id
           text
         }
       }
@@ -32,30 +30,29 @@ async function obtenerTipoFactura(itemId) {
   });
 
   const data = await res.json();
-
   const valor = data?.data?.items?.[0]?.column_values?.[0]?.text;
 
   console.log("🎯 Tipo factura:", valor);
-
   return valor;
 }
 
 // ======================
-// ✅ FECHA ISO
+// ✅ FECHA (CORTO)
 // ======================
-function getFechaISO() {
+function getFecha() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const dia = String(d.getDate()).padStart(2, "0");
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const año = d.getFullYear();
+  return `${dia}/${mes}/${año}`;
 }
 
 // ======================
-// ✅ ACTUALIZAR FECHA EN MONDAY
+// ✅ ACTUALIZAR FECHA
 // ======================
 async function actualizarFecha(itemId) {
 
-  const fecha = getFechaISO();
-
-  console.log("📅 Enviando fecha:", fecha);
+  const fecha = getFecha();
 
   const values = JSON.stringify({
     text_mm4dca2d: fecha
@@ -83,13 +80,11 @@ async function actualizarFecha(itemId) {
   });
 
   const text = await res.text();
-
-  console.log("📥 RESPUESTA MONDAY DATE:");
-  console.log(text);
+  console.log("📥 RESPUESTA DATE:", text);
 }
 
 // ======================
-// ✅ XML DE PRUEBA
+// ✅ XML
 // ======================
 function generarXMLPrueba(folio) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -98,53 +93,43 @@ function generarXMLPrueba(folio) {
   version="CFDI 4.0"
   serie="F"
   folio="${folio}"
-  uuid="ESTO ES UNA PRUEBA NO ES VÁLIDO PARA SAT"
+  uuid="ESTO ES UNA PRUEBA NO ES VALIDO PARA SAT"
   fecha="${new Date().toISOString()}">
 
   <Emisor rfc="AAA010101AAA" nombre="EMPRESA PRUEBA" />
 
   <Receptor 
     rfc="SALR901217B89"
-    nombre="RODRIGO SANTIAGO LÓPEZ"
+    nombre="RODRIGO SANTIAGO LOPEZ"
     usoCFDI="S01" />
 
   <Conceptos>
-    <Concepto 
-      descripcion="Servicio de prueba"
-      cantidad="1"
-      valorUnitario="100"
-      importe="100" />
+    <Concepto descripcion="Servicio prueba" cantidad="1" valorUnitario="100" importe="100" />
   </Conceptos>
 
 </Comprobante>`;
 }
 
 // ======================
-// ✅ PDF MOCK SIMPLE
+// ✅ PDF SIMPLE
 // ======================
 function generarPDF(xml, folio) {
-
-  const content = `
+  return Buffer.from(`
 FACTURA DE PRUEBA
 
 UUID:
-ESTO ES UNA PRUEBA NO ES VÁLIDO PARA SAT
+ESTO ES UNA PRUEBA NO ES VALIDO PARA SAT
 
 FOLIO: ${folio}
 
----------------------------------------
+----------------------------
 
-XML:
-${xml.substring(0, 400)}
-
----------------------------------------
-  `;
-
-  return Buffer.from(content);
+${xml.substring(0, 300)}
+`);
 }
 
 // ======================
-// ✅ GUARDAR ARCHIVO
+// ✅ SAVE
 // ======================
 function saveFile(buffer, filename) {
   const path = `/tmp/${filename}`;
@@ -153,11 +138,11 @@ function saveFile(buffer, filename) {
 }
 
 // ======================
-// ✅ SUBIR ARCHIVO A MONDAY
+// ✅ UPLOAD FILE (100% FIX)
 // ======================
 async function uploadFile(itemId, filePath) {
 
-  console.log("📤 Subiendo archivo:", filePath);
+  console.log("📤 Subiendo:", filePath);
 
   const buffer = fs.readFileSync(filePath);
   const fileName = filePath.split("/").pop();
@@ -182,7 +167,7 @@ async function uploadFile(itemId, filePath) {
     fileName
   );
 
-  const response = await fetch("https://api.monday.com/v2/file", {
+  const res = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY
@@ -190,28 +175,25 @@ async function uploadFile(itemId, filePath) {
     body: formData
   });
 
-  const text = await response.text();
+  const text = await res.text();
 
-  console.log("📥 RESPUESTA MONDAY FILE:");
-  console.log(text);
+  console.log("📥 RESPUESTA FILE:", text);
 
   if (!text) {
     throw new Error("Monday respondió vacío");
   }
 }
-// ======================
-// ✅ WEBHOOK
-// ======================
 
-xport default async function handler(req, res) {
+// ======================
+// ✅ HANDLER
+// ======================
+export default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "no-store");
 
   console.log("🚨 WEBHOOK RECIBIDO");
 
- // ======================
   // ✅ CHALLENGE
-  // ======================
   if (req.method === "GET" && req.query?.challenge) {
     return res.status(200).json({ challenge: req.query.challenge });
   }
@@ -227,50 +209,48 @@ xport default async function handler(req, res) {
     const itemId = req.body?.event?.pulseId;
 
     if (!itemId) {
-      console.log("⚠️ Sin itemId");
       return res.status(200).json({ ok: true });
     }
 
-    console.log("📌 ITEM ID:", itemId);
-
+    console.log("📌 ITEM:", itemId);
 
     // ======================
-    // ✅ 1. FILTRO POR TIPO
+    // ✅ FILTRO Emitidos
     // ======================
     const tipo = await obtenerTipoFactura(itemId);
 
     if ((tipo || "").toLowerCase() !== "emitidos") {
-      console.log("⛔ Ignorado (no Emitidos)");
+      console.log("⛔ Ignorado");
       return res.status(200).json({ ignored: true });
     }
 
     console.log("✅ Procesando Emitido");
 
     // ======================
-    // ✅ 2. FOLIO
+    // ✅ FOLIO
     // ======================
     const folio = Date.now();
 
     // ======================
-    // ✅ 3. XML + PDF
+    // ✅ XML + PDF
     // ======================
     const xml = generarXMLPrueba(folio);
     const pdf = generarPDF(xml, folio);
 
     // ======================
-    // ✅ 4. GUARDAR
+    // ✅ SAVE
     // ======================
     const xmlPath = saveFile(Buffer.from(xml), `factura-${folio}.xml`);
     const pdfPath = saveFile(pdf, `factura-${folio}.pdf`);
 
     // ======================
-    // ✅ 5. SUBIR
+    // ✅ UPLOAD
     // ======================
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
 
     // ======================
-    // ✅ 6. FECHA
+    // ✅ FECHA
     // ======================
     await actualizarFecha(itemId);
 
