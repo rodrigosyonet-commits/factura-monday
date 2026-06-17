@@ -109,7 +109,9 @@ function generarXML(folio) {
   rfcEmisor="${SINUBE.RFC}"
   sucursal="${SINUBE.SUC}"
   codigoReporte="CFDI 4.0"
-  permiteAgregarProductosNoInv="1"
+  permiteAgregarProductosNoInv="0"
+  nomArchivoDescarga="FACTURA_${folio}"
+  noCertificado="${SINUBE.CERT}"
   serie="${SINUBE.SERIE}"
   folio="${folio}"
   formaDePago="99"
@@ -122,12 +124,12 @@ function generarXML(folio) {
 
   <Receptor 
     rfc="SALR901217B89"
-    razonSocial="RODRIGO SANTIAGO LÓPEZ"
+    razonSocial="RODRIGO SANTIAGO LOPEZ"
     usoCFDI="S01"
     regimenFiscal="612" />
 
-  <ReceptorDireccion
-    pais="México"
+  <ReceptorDireccion 
+    pais="México" 
     codigoPostal="57610" />
 
   <Conceptos>
@@ -144,7 +146,6 @@ function generarXML(folio) {
 
 </Comprobante>`;
 }
-
 // ======================
 // TIMBRAR SINUBE
 // ======================
