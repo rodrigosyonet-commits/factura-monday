@@ -218,11 +218,15 @@ export default async function handler(req, res) {
     // ✅ FILTRO Emitidos
     // ======================
     const tipo = await obtenerTipoFactura(itemId);
+const tipoNormalizado = (tipo || "")
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/\p{Diacritic}/gu, "");
 
-    if ((tipo || "").toLowerCase() !== "emitidos") {
-      console.log("⛔ Ignorado");
-      return res.status(200).json({ ignored: true });
-    }
+if (!tipoNormalizado.startsWith("emitid")) {
+  console.log("⛔ Ignorado");
+  return res.status(200).json({ ignored: true });
+}
 
     console.log("✅ Procesando Emitido");
 
