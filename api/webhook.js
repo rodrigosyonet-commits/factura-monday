@@ -268,30 +268,17 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   // ======================
-  // ✅ CHALLENGE
-  // ======================
-  if (req.method === "GET" && req.query?.challenge) {
-    console.log("✅ Challenge GET");
-    return res.status(200).json({ challenge: req.query.challenge });
-  }
+// ✅ CHALLENGE CORRECTO
+// ======================
+if (req.method === "GET" && req.query?.challenge) {
+  console.log("✅ Challenge GET:", req.query.challenge);
+  return res.status(200).json({ challenge: req.query.challenge });
+}
 
-  if (req.method === "POST" && req.body?.challenge) {
-    console.log("✅ Challenge POST");
-    return res.status(200).json({ challenge: req.body.challenge });
-  }
-
-  try {
-
-    console.log("📩 EVENTO COMPLETO:", JSON.stringify(req.body, null, 2));
-
-    const itemId = req.body?.event?.pulseId;
-
-    if (!itemId) {
-      console.log("⚠️ Sin itemId");
-      return res.status(200).json({ ok: true });
-    }
-
-    console.log("📌 ITEM ID:", itemId);
+if (req.method === "POST" && req.body?.challenge) {
+  console.log("✅ Challenge POST:", req.body.challenge);
+  return res.status(200).json({ challenge: req.body.challenge });
+}
 
     // ======================
     // ✅ 1. FOLIO
