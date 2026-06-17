@@ -6,6 +6,40 @@ export const config = {
   api: { bodyParser: true }
 };
 
+/ ======================
+// ✅ OBTENER TIPO (Emitidos / Recibidos)
+// ======================
+async function obtenerTipoFactura(itemId) {
+
+  const query = `
+    query {
+      items(ids: ${itemId}) {
+        column_values(ids: ["color_mm4csect"]) {
+          id
+          text
+        }
+      }
+    }
+  `;
+
+  const res = await fetch("https://api.monday.com/v2", {
+    method: "POST",
+    headers: {
+      Authorization: MONDAY_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ query })
+  });
+
+  const data = await res.json();
+
+  const valor = data?.data?.items?.[0]?.column_values?.[0]?.text;
+
+  console.log("🎯 Tipo factura:", valor);
+
+  return valor;
+}
+
 // ======================
 // ✅ FECHA ISO
 // ======================
@@ -168,15 +202,14 @@ async function uploadFile(itemId, filePath) {
 // ======================
 // ✅ WEBHOOK
 // ======================
-export default async function handler(req, res) {
+
+xport default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "no-store");
 
   console.log("🚨 WEBHOOK RECIBIDO");
 
-  // ======================
-  // ✅ CHALLENGE
-  // ======================
+  // ✅ Challenge Monday
   if (req.method === "GET" && req.query?.challenge) {
     return res.status(200).json({ challenge: req.query.challenge });
   }
@@ -187,69 +220,60 @@ export default async function handler(req, res) {
 
   try {
 
-    console.log("📩 EVENTO:", JSON.stringify(req.body));
-
     const itemId = req.body?.event?.pulseId;
 
     if (!itemId) {
-      console.log("⚠️ Sin itemId");
       return res.status(200).json({ ok: true });
     }
 
-    console.log("📌 ITEM ID:", itemId);
+    console.log("📌 ITEM:", itemId);
 
     // ======================
-    // ✅ 1. FOLIO FAKE
+    // ✅ 1. FILTRO POR TIPO
+    // ======================
+    const tipo = await obtenerTipoFactura(itemId);
+
+    if ((tipo || "").toLowerCase() !== "emitidos") {
+      console.log("⛔ Ignorado (no Emitidos)");
+      return res.status(200).json({ ignored: true });
+    }
+
+    console.log("✅ Procesando Emitido");
+
+    // ======================
+    // ✅ 2. FOLIO
     // ======================
     const folio = Date.now();
 
     // ======================
-    // ✅ 2. XML
+    // ✅ 3. XML + PDF
     // ======================
     const xml = generarXMLPrueba(folio);
-
-    console.log("📄 XML generado");
-
-    // ======================
-    // ✅ 3. PDF
-    // ======================
-    const pdfBuffer = generarPDF(xml, folio);
-
-    console.log("📄 PDF generado");
+    const pdf = generarPDF(xml, folio);
 
     // ======================
     // ✅ 4. GUARDAR
     // ======================
     const xmlPath = saveFile(Buffer.from(xml), `factura-${folio}.xml`);
-    const pdfPath = saveFile(pdfBuffer, `factura-${folio}.pdf`);
-
-    console.log("📁 Archivos guardados");
+    const pdfPath = saveFile(pdf, `factura-${folio}.pdf`);
 
     // ======================
-    // ✅ 5. SUBIR A MONDAY
+    // ✅ 5. SUBIR
     // ======================
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
 
-    console.log("✅ Archivos subidos a Monday");
-
     // ======================
-    // ✅ 6. ACTUALIZAR FECHA
+    // ✅ 6. FECHA
     // ======================
     await actualizarFecha(itemId);
 
-    console.log("✅ Fecha actualizada");
-
-    return res.status(200).json({
-      success: true,
-      folio
-    });
+    return res.status(200).json({ success: true });
 
   } catch (err) {
 
     console.error("❌ ERROR:", err);
 
-    // ✅ IMPORTANTE PARA MONDAY
     return res.status(200).json({
       error: err.message
     });
