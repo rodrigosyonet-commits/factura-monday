@@ -19,7 +19,10 @@ function getFechaISO() {
 // ✅ ACTUALIZAR FECHA EN MONDAY
 // ======================
 async function actualizarFecha(itemId) {
+
   const fecha = getFechaISO();
+
+  console.log("📅 Enviando fecha:", fecha);
 
   const query = `
     mutation {
@@ -33,7 +36,8 @@ async function actualizarFecha(itemId) {
     }
   `;
 
-  await fetch("https://api.monday.com/v2", {
+  // ✅ IMPORTANTE: definir res correctamente
+  const response = await fetch("https://api.monday.com/v2", {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY,
@@ -42,12 +46,11 @@ async function actualizarFecha(itemId) {
     body: JSON.stringify({ query })
   });
 
-  const text = await res.text();
+  const text = await response.text();
 
   console.log("📥 RESPUESTA MONDAY DATE:");
   console.log(text);
 }
-
 
 
 // ======================
