@@ -2,11 +2,7 @@ import fetch from "node-fetch";
 import fs from "fs";
 import FormData from "form-data";
 
-// ======================
-// CONFIG
-// ======================
 const MONDAY_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjY2Mjc0MDM4OCwiYWFpIjoxMSwidWlkIjoxMDMyMTE3MDQsImlhZCI6IjIwMjYtMDUtMjVUMjI6NDE6NDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjgzMjY0MTAsInJnbiI6InVzZTEifQ.aCSoGeqhkzLvJ_TUn4xuIisR3seqR5VGbaBSR-2Os3w";
-
 const SINUBE = {
   URL: "http://ep-dot-facturanube.appspot.com/blob",
   RFC: "COR120522TD6",
@@ -18,15 +14,12 @@ const SINUBE = {
   SERIE: "F"
 };
 
-// ======================
-// CONFIG VERCEL
-// ======================
 export const config = {
   api: { bodyParser: true }
 };
 
 // ======================
-// UTIL BASE64
+// BASE64
 // ======================
 function encodeParams(params) {
   return Buffer.from(
@@ -45,7 +38,7 @@ function getFechaISO() {
 }
 
 // ======================
-// UPDATE FECHA MONDAY
+// UPDATE MONDAY DATE
 // ======================
 async function actualizarFecha(itemId) {
   const fecha = getFechaISO();
@@ -97,7 +90,7 @@ async function getFolio() {
 }
 
 // ======================
-// XML CFDI
+// XML CFDI CORRECTO
 // ======================
 function generarXML(folio) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -144,8 +137,9 @@ function generarXML(folio) {
 
 </Comprobante>`;
 }
+
 // ======================
-// TIMBRAR (tipo 20)
+// TIMBRAR SINUBE
 // ======================
 async function timbrar(xml) {
   const params = encodeParams({
@@ -163,7 +157,7 @@ async function timbrar(xml) {
 }
 
 // ======================
-// EXTRAER BASE64
+// EXTRAER XML + PDF
 // ======================
 function extraerArchivos(resp) {
   const xml = resp.match(/<xml>([\s\S]*?)<\/xml>/);
@@ -176,7 +170,7 @@ function extraerArchivos(resp) {
 }
 
 // ======================
-// FALLBACK PDF SINUBE
+// FALLBACK PDF
 // ======================
 async function descargarPDF(serie, folio) {
 
@@ -195,15 +189,14 @@ async function descargarPDF(serie, folio) {
     nompdf: `FACT_${folio}`
   });
 
-  const res = await fetch(`${SINUBE.URL}?par=${params});
-
+  const res = await fetch(`${SINUBE.URL}?par=${params}`);
   const buffer = await res.arrayBuffer();
 
   return Buffer.from(buffer);
 }
-  
+
 // ======================
-// SAVE
+// SAVE FILE
 // ======================
 function saveFile(buffer, name) {
   const path = `/tmp/${name}`;
@@ -212,7 +205,7 @@ function saveFile(buffer, name) {
 }
 
 // ======================
-// SUBIR MONDAY
+// SUBIR A MONDAY
 // ======================
 async function uploadFile(itemId, path) {
 
@@ -244,7 +237,7 @@ export default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "no-store");
 
-  // ✅ CHALLENGE
+  // ✅ Challenge
   if (req.method === "GET" && req.query?.challenge) {
     return res.status(200).json({ challenge: req.query.challenge });
   }
@@ -258,9 +251,6 @@ export default async function handler(req, res) {
     const itemId = req.body?.event?.pulseId;
     if (!itemId) return res.status(200).json({ ok: true });
 
-    // ======================
-    // FLUJO
-    // ======================
     const folio = await getFolio();
 
     const xml = generarXML(folio);
@@ -268,9 +258,8 @@ export default async function handler(req, res) {
 
     let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
-    // ✅ fallback PDF
+    // fallback PDF
     if (!pdf) {
-      console.log("⚠️ PDF no vino, usando fallback 1007");
       pdf = await descargarPDF(SINUBE.SERIE, folio);
     }
 
@@ -291,9 +280,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error(err);
-
-    return res.status(500).json({
-      error: err.message
-    });
+    return res.status(500).json({ error: err.message });
   }
 }
+``
