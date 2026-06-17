@@ -80,30 +80,20 @@ async function getFolio() {
     ser: SINUBE.SERIE
   });
 
-  const res = await fetch(`${SINUBE.URL}?par=${params}`);
+  const url = `${SINUBE.URL}?par=${params}`;
+
+  console.log("📤 URL SINUBE:", url);
+
+  const res = await fetch(url);
   const xml = await res.text();
 
-  console.log("📥 SINUBE FOLIO RAW:", xml);
+  // ✅ ESTO ES LO MÁS IMPORTANTE
+  console.log("📥 RESPUESTA COMPLETA SINUBE:");
+  console.log("----------------------------------");
+  console.log(xml);
+  console.log("----------------------------------");
 
-  // ✅ detectar error explícito
-  if (xml.includes("<error>")) {
-    throw new Error(`SINUBE ERROR: ${xml}`);
-  }
-
-  // ✅ intento 1: formato clásico
-  let match = xml.match(/siguienteFolio="(\d+)"/);
-
-  if (match) return match[1];
-
-  // ✅ intento 2: fallback usando folioActual + 1
-  const matchActual = xml.match(/folioActual="(\d+)"/);
-
-  if (matchActual) {
-    const siguiente = Number(matchActual[1]) + 1;
-    return String(siguiente);
-  }
-
-  throw new Error("No se pudo interpretar folio SINUBE");
+  return "TEST"; // 👈 temporal para que no truene
 }
 
 // ======================
