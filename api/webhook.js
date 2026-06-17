@@ -260,8 +260,19 @@ export default async function handler(req, res) {
 
     const folio = await getFolio();
 
-    const xml = generarXML(folio);
-    const resp = await timbrar(xml);
+const xml = generarXML(folio);
+
+// ✅ TIMBRADO
+const resp = await timbrar(xml);
+
+// ✅ LOG AQUÍ EXACTO
+console.log("📥 SINUBE TIMBRADO RAW:");
+console.log("----------------------------------");
+console.log(resp);
+console.log("----------------------------------");
+
+// ✅ después de loggear, ya procesas
+let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
     let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
