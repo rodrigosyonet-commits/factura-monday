@@ -126,7 +126,12 @@ async function uploadFile(itemId, filePath) {
 
   console.log("📤 Subiendo archivo:", filePath);
 
-  const query = `
+  const fileBuffer = fs.readFileSync(filePath);
+  const fileName = filePath.split("/").pop();
+
+  const formData = new FormData();
+
+  formData.append("query", `
     mutation ($file: File!) {
       add_file_to_column(
         item_id: ${itemId},
@@ -136,26 +141,20 @@ async function uploadFile(itemId, filePath) {
         id
       }
     }
-  `;
+  `);
 
-  const fileBuffer = fs.readFileSync(filePath);
-
-  const form = new FormData();
-
-  form.append("query", query);
-
-  form.append("variables[file]", fileBuffer, {
-    filename: filePath.split("/").pop(),
-    contentType: "application/octet-stream" // 🔥 IMPORTANTE
-  });
+  formData.append(
+    "variables[file]",
+    new Blob([fileBuffer]),
+    fileName
+  );
 
   const response = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
       Authorization: MONDAY_API_KEY,
-      ...form.getHeaders()
     },
-    body: form
+    body: formData
   });
 
   const text = await response.text();
@@ -164,7 +163,7 @@ async function uploadFile(itemId, filePath) {
   console.log(text);
 
   if (!text) {
-    throw new Error("Monday respondió vacío al subir archivo");
+    throw new Error("Monday respondió vacío (FormData nativa)");
   }
 }
 
