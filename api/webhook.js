@@ -166,16 +166,25 @@ async function timbrar(xml) {
 // ======================
 // EXTRAER XML + PDF
 // ======================
-function extraerArchivos(resp) {
-  const xml = resp.match(/<xml>([\s\S]*?)<\/xml>/);
-  const pdf = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
+function extraerUrls(resp) {
+
+  const xmlMatch = resp.match(/<xml>([\s\S]*?)<\/xml>/);
+  const pdfMatch = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
 
   return {
-    xml: xml ? Buffer.from(xml[1], "base64") : null,
-    pdf: pdf ? Buffer.from(pdf[1], "base64") : null
+    xmlUrl: xmlMatch ? xmlMatch[1].trim() : null,
+    pdfUrl: pdfMatch ? pdfMatch[1].trim() : null
   };
 }
 
+// ======================
+// DESCARGA XML + PDF
+// ======================
+async function descargarArchivo(url) {
+  const res = await fetch(url);
+  const buffer = await res.arrayBuffer();
+  return Buffer.from(buffer);
+}
 // ======================
 // FALLBACK PDF
 // ======================
@@ -295,13 +304,26 @@ if (resp.toLowerCase().includes("error")) {
   throw new Error(`SINUBE RESPONDIÓ ERROR:\n${resp}`);
 }
 
-    // ✅ SOLO UNA DECLARACIÓN
-    let { xml: xmlFile, pdf } = extraerArchivos(resp);
+    // ✅ obtener URLs
+const { xmlUrl, pdfUrl } = extraerUrls(resp);
 
-    // ✅ fallback PDF
-    if (!pdf) {
-      pdf = await descargarPDF(SINUBE.SERIE, folio);
-    }
+if (!xmlUrl) {
+  throw new Error("SINUBE no devolvió URL de XML");
+}
+
+// ✅ descargar XML
+const xmlFile = await descargarArchivo(xmlUrl);
+
+// ✅ descargar PDF (directo o fallback)
+let pdf;
+
+if (pdfUrl) {
+  pdf = await descargarArchivo(pdfUrl);
+} else {
+  console.log("⚠️ PDF no vino, usando fallback 1007");
+  pdf = await descargarPDF(SINUBE.SERIE, folio);
+}
+
 
     if (!xmlFile) throw new Error("SINUBE no generó XML");
 
