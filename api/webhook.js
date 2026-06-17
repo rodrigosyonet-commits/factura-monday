@@ -126,7 +126,7 @@ async function uploadFile(itemId, filePath) {
 
   console.log("📤 Subiendo archivo:", filePath);
 
-  const fileBuffer = fs.readFileSync(filePath);
+  const buffer = fs.readFileSync(filePath);
   const fileName = filePath.split("/").pop();
 
   const formData = new FormData();
@@ -145,14 +145,14 @@ async function uploadFile(itemId, filePath) {
 
   formData.append(
     "variables[file]",
-    new Blob([fileBuffer]),
+    new Blob([buffer]),
     fileName
   );
 
   const response = await fetch("https://api.monday.com/v2/file", {
     method: "POST",
     headers: {
-      Authorization: MONDAY_API_KEY,
+      Authorization: MONDAY_API_KEY
     },
     body: formData
   });
@@ -163,7 +163,7 @@ async function uploadFile(itemId, filePath) {
   console.log(text);
 
   if (!text) {
-    throw new Error("Monday respondió vacío (FormData nativa)");
+    throw new Error("Monday respondió vacío (ahora sí crítico)");
   }
 }
 
