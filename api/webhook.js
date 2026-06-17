@@ -149,6 +149,7 @@ function generarXML(folio) {
 // TIMBRAR SINUBE
 // ======================
 async function timbrar(xml) {
+
   const params = encodeParams({
     tipo: "20",
     emp: SINUBE.RFC,
@@ -159,8 +160,21 @@ async function timbrar(xml) {
     xml: Buffer.from(xml).toString("base64")
   });
 
-  const res = await fetch(`${SINUBE.URL}?par=${params}`);
-  return await res.text();
+  const url = `${SINUBE.URL}?par=${params}`;
+
+  console.log("📤 URL:", url);
+
+  const res = await fetch(url);
+
+  console.log("📡 STATUS:", res.status);
+
+  const buffer = await res.arrayBuffer();
+
+  console.log("📦 BYTES:", buffer.byteLength);
+
+  const text = Buffer.from(buffer).toString();
+
+  return text;
 }
 
 // ======================
@@ -254,7 +268,7 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   // ======================
-  // ✅ CHALLENGE MONDAY
+  // ✅ CHALLENGE
   // ======================
   if (req.method === "GET" && req.query?.challenge) {
     console.log("✅ Challenge GET");
@@ -273,27 +287,25 @@ export default async function handler(req, res) {
     const itemId = req.body?.event?.pulseId;
 
     if (!itemId) {
-      console.log("⚠️ No hay itemId");
+      console.log("⚠️ Sin itemId");
       return res.status(200).json({ ok: true });
     }
 
     console.log("📌 ITEM ID:", itemId);
 
     // ======================
-    // ✅ 1. OBTENER FOLIO
+    // ✅ 1. FOLIO
     // ======================
     console.log("🔄 Obteniendo folio...");
-
     const folio = await getFolio();
-
-    console.log("✅ FOLIO:", folio);
+    console.log("✅ Folio:", folio);
 
     // ======================
-    // ✅ 2. GENERAR XML
+    // ✅ 2. XML
     // ======================
     const xml = generarXML(folio);
 
-    console.log("📄 XML GENERADO:");
+    console.log("📄 XML:");
     console.log("----------------------------------");
     console.log(xml);
     console.log("----------------------------------");
@@ -301,35 +313,34 @@ export default async function handler(req, res) {
     // ======================
     // ✅ 3. TIMBRAR
     // ======================
-    console.log("🚀 Enviando XML a SINUBE...");
+    console.log("🚀 Enviando a SINUBE...");
 
     let resp;
 
     try {
       resp = await timbrar(xml);
-
-      console.log("📥 SINUBE TIMBRADO RAW:");
-      console.log("----------------------------------");
-      console.log(resp);
-      console.log("----------------------------------");
-
     } catch (err) {
-      console.error("❌ ERROR EN FETCH SINUBE:");
+      console.error("❌ ERROR FETCH SINUBE:");
       console.error(err);
-      throw new Error("Fallo en llamada a SINUBE");
+      throw new Error("Error conexión SINUBE");
     }
+
+    console.log("📥 RESPUESTA SINUBE:");
+    console.log("----------------------------------");
+    console.log(resp);
+    console.log("----------------------------------");
 
     if (!resp) {
       throw new Error("SINUBE respondió vacío");
     }
 
     // ======================
-    // ✅ 4. DETECTAR ERROR SINUBE
+    // ✅ 4. ERROR SINUBE
     // ======================
     if (resp.toLowerCase().includes("error")) {
-      console.error("❌ SINUBE ERROR DETECTADO:");
+      console.error("❌ SINUBE ERROR:");
       console.error(resp);
-      throw new Error(`Error SINUBE:\n${resp}`);
+      throw new Error(resp);
     }
 
     // ======================
@@ -347,6 +358,8 @@ export default async function handler(req, res) {
     console.log("🌐 PDF URL:", pdfUrl);
 
     if (!xmlUrl) {
+      console.error("❌ RESPUESTA COMPLETA:");
+      console.error(resp);
       throw new Error("SINUBE no devolvió URL XML");
     }
 
@@ -354,14 +367,13 @@ export default async function handler(req, res) {
     // ✅ 6. DESCARGAR XML
     // ======================
     console.log("⬇️ Descargando XML...");
-
     const xmlRes = await fetch(xmlUrl);
     const xmlBuffer = Buffer.from(await xmlRes.arrayBuffer());
 
-    console.log("✅ XML descargado (bytes):", xmlBuffer.length);
+    console.log("✅ XML descargado:", xmlBuffer.length);
 
     // ======================
-    // ✅ 7. DESCARGAR PDF
+    // ✅ 7. PDF
     // ======================
     let pdfBuffer;
 
@@ -369,14 +381,14 @@ export default async function handler(req, res) {
       console.log("⬇️ Descargando PDF...");
       const pdfRes = await fetch(pdfUrl);
       pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
-      console.log("✅ PDF descargado (bytes):", pdfBuffer.length);
+      console.log("✅ PDF descargado:", pdfBuffer.length);
     } else {
-      console.log("⚠️ PDF no vino, usando fallback...");
+      console.log("⚠️ PDF fallback...");
       pdfBuffer = await descargarPDF(SINUBE.SERIE, folio);
     }
 
     // ======================
-    // ✅ 8. GUARDAR ARCHIVOS
+    // ✅ 8. SAVE
     // ======================
     const xmlPath = saveFile(xmlBuffer, `factura-${folio}.xml`);
     const pdfPath = saveFile(pdfBuffer, `factura-${folio}.pdf`);
@@ -385,9 +397,9 @@ export default async function handler(req, res) {
     console.log("📁 PDF Path:", pdfPath);
 
     // ======================
-    // ✅ 9. SUBIR A MONDAY
+    // ✅ 9. MONDAY
     // ======================
-    console.log("📤 Subiendo archivos a Monday...");
+    console.log("📤 Subiendo a Monday...");
 
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
@@ -395,13 +407,13 @@ export default async function handler(req, res) {
     console.log("✅ Archivos subidos");
 
     // ======================
-    // ✅ 10. ACTUALIZAR FECHA
+    // ✅ 10. FECHA
     // ======================
-    console.log("📅 Actualizando fecha...");
+    console.log("📅 Actualizando date4...");
 
     await actualizarFecha(itemId);
 
-    console.log("✅ Proceso completo");
+    console.log("✅ PROCESO COMPLETO");
 
     return res.status(200).json({
       success: true,
