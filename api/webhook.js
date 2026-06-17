@@ -2,34 +2,13 @@ import fs from "fs";
 import FormData from "form-data";
 
 const MONDAY_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjY2Mjc0MDM4OCwiYWFpIjoxMSwidWlkIjoxMDMyMTE3MDQsImlhZCI6IjIwMjYtMDUtMjVUMjI6NDE6NDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjgzMjY0MTAsInJnbiI6InVzZTEifQ.aCSoGeqhkzLvJ_TUn4xuIisR3seqR5VGbaBSR-2Os3w";
-const SINUBE = {
-  URL: "http://ep-dot-facturanube.appspot.com/blob",
-  RFC: "COR120522TD6",
-  SUC: "Matriz",
-  USER: "sistemas1.qsitservices@gmail.com",
-  PASS: "COR120522TD6",
-  SIS: "Stylos",
-  CERT: "00001000000711090217",
-  SERIE: "F"
-};
 
 export const config = {
   api: { bodyParser: true }
 };
 
 // ======================
-// BASE64
-// ======================
-function encodeParams(params) {
-  return Buffer.from(
-    Object.entries(params)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("\n")
-  ).toString("base64");
-}
-
-// ======================
-// FECHA ISO
+// ✅ FECHA ISO
 // ======================
 function getFechaISO() {
   const d = new Date();
@@ -37,7 +16,7 @@ function getFechaISO() {
 }
 
 // ======================
-// UPDATE MONDAY DATE
+// ✅ ACTUALIZAR FECHA EN MONDAY
 // ======================
 async function actualizarFecha(itemId) {
   const fecha = getFechaISO();
@@ -65,197 +44,73 @@ async function actualizarFecha(itemId) {
 }
 
 // ======================
-// FOLIO
+// ✅ XML DE PRUEBA
 // ======================
-async function getFolio() {
-
-  const params = encodeParams({
-    tipo: "10",
-    emp: SINUBE.RFC,
-    suc: SINUBE.SUC,
-    usu: SINUBE.USER,
-    pwd: SINUBE.PASS,
-    sis: SINUBE.SIS,
-    cer: SINUBE.CERT,
-    ser: SINUBE.SERIE
-  });
-
-  const url = `${SINUBE.URL}?par=${params}`;
-
-  console.log("📤 URL SINUBE:", url);
-
-  const res = await fetch(url);
-  const xml = await res.text();
-
-  // ✅ ESTO ES LO MÁS IMPORTANTE
-  console.log("📥 RESPUESTA COMPLETA SINUBE:");
-  console.log("----------------------------------");
-  console.log(xml);
-  console.log("----------------------------------");
-
-  return "TEST"; // 👈 temporal para que no truene
-}
-
-// ======================
-// XML CFDI CORRECTO
-// ======================
-function generarXML(folio) {
+function generarXMLPrueba(folio) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<Comprobante 
-  sistema="Stylos"
-  generar="Factura"
+<Comprobante
+  sistema="PRUEBA"
   version="CFDI 4.0"
-  exportacion="01"
-  rfcEmisor="${SINUBE.RFC}"
-  sucursal="${SINUBE.SUC}"
-  codigoReporte="CFDI 4.0"
-  permiteAgregarProductosNoInv="0"
-  nomArchivoDescarga="FACTURA_${folio}"
-  noCertificado="${SINUBE.CERT}"
-  serie="${SINUBE.SERIE}"
+  serie="F"
   folio="${folio}"
-  formaDePago="99"
-  metodoDePago="PPD"
-  subtotal="100"
-  montoIVA="16"
-  total="116"
-  monedaSAT="MXN"
-  difZonaHoraria="-6">
+  uuid="ESTO ES UNA PRUEBA NO ES VÁLIDO PARA SAT"
+  fecha="${new Date().toISOString()}">
+
+  <Emisor rfc="AAA010101AAA" nombre="EMPRESA PRUEBA" />
 
   <Receptor 
     rfc="SALR901217B89"
-    razonSocial="RODRIGO SANTIAGO LOPEZ"
-    usoCFDI="S01"
-    regimenFiscal="612" />
-
-  <ReceptorDireccion 
-    pais="México" 
-    codigoPostal="57610" />
+    nombre="RODRIGO SANTIAGO LÓPEZ"
+    usoCFDI="S01" />
 
   <Conceptos>
     <Concepto 
-      productoSAT="10101504"
-      descripcion="Servicio de tecnología"
+      descripcion="Servicio de prueba"
       cantidad="1"
-      unidadSAT="E48"
       valorUnitario="100"
-      importe="100"
-      montoIVA="16"
-      objetoImp="02" />
+      importe="100" />
   </Conceptos>
 
 </Comprobante>`;
 }
+
 // ======================
-// TIMBRAR SINUBE
+// ✅ PDF MOCK SIMPLE
 // ======================
-async function timbrar(xml) {
+function generarPDF(xml, folio) {
 
-  const params = encodeParams({
-    tipo: "20",
-    emp: SINUBE.RFC,
-    suc: SINUBE.SUC,
-    usu: SINUBE.USER,
-    pwd: SINUBE.PASS,
-    sis: SINUBE.SIS,
-    xml: Buffer.from(xml).toString("base64")
-  });
+  const content = `
+FACTURA DE PRUEBA
 
-  const url = `${SINUBE.URL}?par=${params}`;
+UUID:
+ESTO ES UNA PRUEBA NO ES VÁLIDO PARA SAT
 
-  console.log("📤 URL TIMBRAR:");
-  console.log(url);
+FOLIO: ${folio}
 
-  const res = await fetch(url);
+---------------------------------------
 
-  console.log("📡 STATUS:", res.status);
+XML:
+${xml.substring(0, 400)}
 
-  const buffer = await res.arrayBuffer();
+---------------------------------------
+  `;
 
-  console.log("📦 BYTES RECIBIDOS:", buffer.byteLength);
-
-  // ✅ LOG RAW REAL
-  const raw = new Uint8Array(buffer);
-
-  console.log("🔍 PRIMEROS BYTES:", raw.slice(0, 50));
-
-  // ✅ INTENTAR DECODIFICAR
-  let text;
-  try {
-    text = Buffer.from(buffer).toString("utf-8");
-  } catch (e) {
-    console.log("⚠️ Error al convertir a string");
-    text = "";
-  }
-
-  console.log("📥 TEXTO DECODIFICADO:");
-  console.log("----------------------------------");
-  console.log(text);
-  console.log("----------------------------------");
-
-  return text;
-}
-// ======================
-// EXTRAER XML + PDF
-// ======================
-function extraerUrls(resp) {
-
-  const xmlMatch = resp.match(/<xml>([\s\S]*?)<\/xml>/);
-  const pdfMatch = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
-
-  return {
-    xmlUrl: xmlMatch ? xmlMatch[1].trim() : null,
-    pdfUrl: pdfMatch ? pdfMatch[1].trim() : null
-  };
+  return Buffer.from(content);
 }
 
 // ======================
-// DESCARGA XML + PDF
+// ✅ GUARDAR ARCHIVO
 // ======================
-async function descargarArchivo(url) {
-  const res = await fetch(url);
-  const buffer = await res.arrayBuffer();
-  return Buffer.from(buffer);
-}
-// ======================
-// FALLBACK PDF
-// ======================
-async function descargarPDF(serie, folio) {
-
-  const params = encodeParams({
-    tipo: "1007",
-    emprep: "neoreportes",
-    emp: SINUBE.RFC,
-    suc: SINUBE.SUC,
-    reporte: "CFDI 4.0",
-    serie: serie,
-    folio: folio,
-    usu: SINUBE.USER,
-    pwd: SINUBE.PASS,
-    sist: SINUBE.SIS,
-    difzh: "-6",
-    nompdf: `FACT_${folio}`
-  });
-
-  const res = await fetch(`${SINUBE.URL}?par=${params}`);
-  const buffer = await res.arrayBuffer();
-
-  return Buffer.from(buffer);
-}
-
-// ======================
-// SAVE FILE
-// ======================
-function saveFile(buffer, name) {
-  const path = `/tmp/${name}`;
+function saveFile(buffer, filename) {
+  const path = `/tmp/${filename}`;
   fs.writeFileSync(path, buffer);
   return path;
 }
 
 // ======================
-// SUBIR A MONDAY
+// ✅ SUBIR ARCHIVO A MONDAY
 // ======================
-async function uploadFile(itemId, path) {
+async function uploadFile(itemId, filePath) {
 
   const query = `
     mutation ($file: File!) {
@@ -263,23 +118,27 @@ async function uploadFile(itemId, path) {
         item_id: ${itemId},
         column_id: "file_mm4be9tf",
         file: $file
-      ) { id }
+      ) {
+        id
+      }
     }
   `;
 
   const form = new FormData();
   form.append("query", query);
-  form.append("variables[file]", fs.createReadStream(path));
+  form.append("variables[file]", fs.createReadStream(filePath));
 
   await fetch("https://api.monday.com/v2/file", {
     method: "POST",
-    headers: { Authorization: MONDAY_API_KEY },
+    headers: {
+      Authorization: MONDAY_API_KEY
+    },
     body: form
   });
 }
 
 // ======================
-// WEBHOOK
+// ✅ WEBHOOK
 // ======================
 export default async function handler(req, res) {
 
@@ -291,18 +150,16 @@ export default async function handler(req, res) {
   // ✅ CHALLENGE
   // ======================
   if (req.method === "GET" && req.query?.challenge) {
-    console.log("✅ Challenge GET:", req.query.challenge);
     return res.status(200).json({ challenge: req.query.challenge });
   }
 
   if (req.method === "POST" && req.body?.challenge) {
-    console.log("✅ Challenge POST:", req.body.challenge);
     return res.status(200).json({ challenge: req.body.challenge });
   }
 
   try {
 
-    console.log("📩 EVENTO:", JSON.stringify(req.body, null, 2));
+    console.log("📩 EVENTO:", JSON.stringify(req.body));
 
     const itemId = req.body?.event?.pulseId;
 
@@ -314,105 +171,46 @@ export default async function handler(req, res) {
     console.log("📌 ITEM ID:", itemId);
 
     // ======================
-    // ✅ 1. FOLIO
+    // ✅ 1. FOLIO FAKE
     // ======================
-    console.log("🔄 Obteniendo folio...");
-    const folio = await getFolio();
-    console.log("✅ Folio:", folio);
+    const folio = Date.now();
 
     // ======================
     // ✅ 2. XML
     // ======================
-    const xml = generarXML(folio);
+    const xml = generarXMLPrueba(folio);
 
-    console.log("📄 XML:");
-    console.log("----------------------------------");
-    console.log(xml);
-    console.log("----------------------------------");
+    console.log("📄 XML generado");
 
     // ======================
-    // ✅ 3. TIMBRAR
+    // ✅ 3. PDF
     // ======================
-    console.log("🚀 Enviando a SINUBE...");
+    const pdfBuffer = generarPDF(xml, folio);
 
-    const resp = await timbrar(xml);
-
-    console.log("📥 RESPUESTA SINUBE:");
-    console.log("----------------------------------");
-    console.log(resp);
-    console.log("----------------------------------");
-
-    if (!resp) {
-      throw new Error("SINUBE respondió vacío");
-    }
+    console.log("📄 PDF generado");
 
     // ======================
-    // ✅ ERROR SINUBE
+    // ✅ 4. GUARDAR
     // ======================
-    if (resp.toLowerCase().includes("error")) {
-      throw new Error(`SINUBE ERROR:\n${resp}`);
-    }
-
-    // ======================
-    // ✅ 4. EXTRAER URLS
-    // ======================
-    const xmlMatch = resp.match(/<xml>([\s\S]*?)<\/xml>/);
-    const pdfMatch = resp.match(/<pdf>([\s\S]*?)<\/pdf>/);
-
-    const xmlUrl = xmlMatch ? xmlMatch[1].trim() : null;
-    const pdfUrl = pdfMatch ? pdfMatch[1].trim() : null;
-
-    console.log("🌐 XML URL:", xmlUrl);
-    console.log("🌐 PDF URL:", pdfUrl);
-
-    if (!xmlUrl) {
-      throw new Error("SINUBE no devolvió URL XML");
-    }
-
-    // ======================
-    // ✅ 5. DESCARGAR XML
-    // ======================
-    console.log("⬇️ Descargando XML...");
-    const xmlRes = await fetch(xmlUrl);
-    const xmlBuffer = Buffer.from(await xmlRes.arrayBuffer());
-
-    // ======================
-    // ✅ 6. DESCARGAR PDF
-    // ======================
-    let pdfBuffer;
-
-    if (pdfUrl) {
-      console.log("⬇️ Descargando PDF...");
-      const pdfRes = await fetch(pdfUrl);
-      pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
-    } else {
-      console.log("⚠️ PDF fallback...");
-      pdfBuffer = await descargarPDF(SINUBE.SERIE, folio);
-    }
-
-    // ======================
-    // ✅ 7. SAVE FILES
-    // ======================
-    const xmlPath = saveFile(xmlBuffer, `factura-${folio}.xml`);
+    const xmlPath = saveFile(Buffer.from(xml), `factura-${folio}.xml`);
     const pdfPath = saveFile(pdfBuffer, `factura-${folio}.pdf`);
 
-    console.log("📁 XML Path:", xmlPath);
-    console.log("📁 PDF Path:", pdfPath);
+    console.log("📁 Archivos guardados");
 
     // ======================
-    // ✅ 8. SUBIR MONDAY
+    // ✅ 5. SUBIR A MONDAY
     // ======================
     await uploadFile(itemId, xmlPath);
     await uploadFile(itemId, pdfPath);
 
-    console.log("✅ Archivos subidos");
+    console.log("✅ Archivos subidos a Monday");
 
     // ======================
-    // ✅ 9. FECHA
+    // ✅ 6. ACTUALIZAR FECHA
     // ======================
     await actualizarFecha(itemId);
 
-    console.log("✅ PROCESO COMPLETO");
+    console.log("✅ Fecha actualizada");
 
     return res.status(200).json({
       success: true,
@@ -421,10 +219,9 @@ export default async function handler(req, res) {
 
   } catch (err) {
 
-    console.error("❌ ERROR:");
-    console.error(err);
+    console.error("❌ ERROR:", err);
 
-    // ✅ MUY IMPORTANTE PARA MONDAY
+    // ✅ IMPORTANTE PARA MONDAY
     return res.status(200).json({
       error: err.message
     });
