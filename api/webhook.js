@@ -1,5 +1,4 @@
 import fs from "fs";
-import FormData from "form-data";
 
 const MONDAY_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjY2Mjc0MDM4OCwiYWFpIjoxMSwidWlkIjoxMDMyMTE3MDQsImlhZCI6IjIwMjYtMDUtMjVUMjI6NDE6NDAuMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjgzMjY0MTAsInJnbiI6InVzZTEifQ.aCSoGeqhkzLvJ_TUn4xuIisR3seqR5VGbaBSR-2Os3w";
 
@@ -163,10 +162,9 @@ async function uploadFile(itemId, filePath) {
   console.log(text);
 
   if (!text) {
-    throw new Error("Monday respondió vacío (ahora sí crítico)");
+    throw new Error("Monday respondió vacío");
   }
 }
-
 // ======================
 // ✅ WEBHOOK
 // ======================
