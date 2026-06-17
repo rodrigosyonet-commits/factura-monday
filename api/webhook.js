@@ -82,8 +82,18 @@ async function getFolio() {
   const res = await fetch(`${SINUBE.URL}?par=${params}`);
   const xml = await res.text();
 
+  console.log("📥 RESPUESTA SINUBE FOLIO:", xml); // 👈 CRÍTICO
+
+  // ✅ Si hay error, lo mostramos claro
+  if (xml.includes("<error>")) {
+    throw new Error(`SINUBE ERROR: ${xml}`);
+  }
+
   const match = xml.match(/siguienteFolio="(\d+)"/);
-  if (!match) throw new Error("Sin folio");
+
+  if (!match) {
+    throw new Error("No se encontró siguienteFolio");
+  }
 
   return match[1];
 }
