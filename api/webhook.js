@@ -258,25 +258,27 @@ export default async function handler(req, res) {
     const itemId = req.body?.event?.pulseId;
     if (!itemId) return res.status(200).json({ ok: true });
 
+    // ======================
+    // ✅ FLUJO
+    // ======================
+
     const folio = await getFolio();
 
-const xml = generarXML(folio);
+    const xml = generarXML(folio);
 
-// ✅ TIMBRADO
-const resp = await timbrar(xml);
+    // ✅ TIMBRADO
+    const resp = await timbrar(xml);
 
-// ✅ LOG AQUÍ EXACTO
-console.log("📥 SINUBE TIMBRADO RAW:");
-console.log("----------------------------------");
-console.log(resp);
-console.log("----------------------------------");
+    // ✅ LOG CRÍTICO (debug SINUBE)
+    console.log("📥 SINUBE TIMBRADO RAW:");
+    console.log("----------------------------------");
+    console.log(resp);
+    console.log("----------------------------------");
 
-// ✅ después de loggear, ya procesas
-let { xml: xmlFile, pdf } = extraerArchivos(resp);
-
+    // ✅ SOLO UNA DECLARACIÓN
     let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
-    // fallback PDF
+    // ✅ fallback PDF
     if (!pdf) {
       pdf = await descargarPDF(SINUBE.SERIE, folio);
     }
@@ -298,7 +300,9 @@ let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: err.message });
+
+    return res.status(500).json({
+      error: err.message
+    });
   }
 }
-``
