@@ -267,13 +267,25 @@ export default async function handler(req, res) {
     const xml = generarXML(folio);
 
     // ✅ TIMBRADO
-    const resp = await timbrar(xml);
+let resp;
 
-    // ✅ LOG CRÍTICO (debug SINUBE)
-    console.log("📥 SINUBE TIMBRADO RAW:");
-    console.log("----------------------------------");
-    console.log(resp);
-    console.log("----------------------------------");
+try {
+  resp = await timbrar(xml);
+
+  console.log("📥 SINUBE TIMBRADO RAW:");
+  console.log("----------------------------------");
+  console.log(resp);
+  console.log("----------------------------------");
+
+} catch (err) {
+  console.error("❌ ERROR EN TIMBRAR:");
+  console.error(err);
+
+  throw new Error("Fallo en llamada a SINUBE");
+}
+if (!resp || typeof resp !== "string") {
+  throw new Error("SINUBE no respondió correctamente");
+}
     // ✅ DETECTAR ERROR REAL DE SINUBE
 const errorMatch = resp.match(/<error>([\s\S]*?)<\/error>/);
 
