@@ -274,7 +274,12 @@ export default async function handler(req, res) {
     console.log("----------------------------------");
     console.log(resp);
     console.log("----------------------------------");
+    // ✅ DETECTAR ERROR REAL DE SINUBE
+const errorMatch = resp.match(/<error>([\s\S]*?)<\/error>/);
 
+if (errorMatch) {
+  throw new Error(`SINUBE ERROR: ${errorMatch[1]}`);
+}
     // ✅ SOLO UNA DECLARACIÓN
     let { xml: xmlFile, pdf } = extraerArchivos(resp);
 
